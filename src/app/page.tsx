@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useAppStore, formatCurrency, formatDate, statusLabels, statusColors, DocumentKS2, DocumentKS3, InstallationOrder } from '@/lib/store'
+import { useAppStore, formatCurrency, formatDate, statusLabels, statusColors, DocumentKS2, DocumentKS3, InstallationOrder, Employee, HiddenWorkAct, WorkPlan } from '@/lib/store'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -968,6 +968,8 @@ function PlansSection() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [filterStatus, setFilterStatus] = useState('all')
   const [viewMode, setViewMode] = useState<'table' | 'gantt'>('table')
+  const [viewPlan, setViewPlan] = useState<WorkPlan | null>(null)
+  const [editPlan, setEditPlan] = useState<WorkPlan | null>(null)
 
   const fetchData = () => {
     Promise.all([
@@ -983,6 +985,17 @@ function PlansSection() {
   }
 
   useEffect(() => { fetchData() }, [])
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Удалить план работ?')) return
+    const res = await fetch(`/api/plans/${id}`, { method: 'DELETE' })
+    if (res.ok) {
+      toast.success('План работ удален')
+      fetchData()
+    } else {
+      toast.error('Ошибка удаления')
+    }
+  }
 
   if (loading) return <div className="p-6">Загрузка...</div>
 
@@ -1054,8 +1067,9 @@ function PlansSection() {
                       </td>
                       <td className="p-4 text-center">
                         <div className="flex items-center justify-center gap-1">
-                          <Button variant="ghost" size="sm"><Eye className="w-4 h-4" /></Button>
-                          <Button variant="ghost" size="sm"><Edit className="w-4 h-4" /></Button>
+                          <Button variant="ghost" size="sm" onClick={() => setViewPlan(p)}><Eye className="w-4 h-4" /></Button>
+                          <Button variant="ghost" size="sm" onClick={() => setEditPlan(p)}><Edit className="w-4 h-4" /></Button>
+                          <Button variant="ghost" size="sm" className="text-red-600" onClick={() => handleDelete(p.id)}><X className="w-4 h-4" /></Button>
                         </div>
                       </td>
                     </tr>
@@ -1076,6 +1090,98 @@ function PlansSection() {
         onSuccess={fetchData}
         data={{ directions, buildings }}
       />
+
+      {/* Диалог просмотра плана */}
+      <Dialog open={!!viewPlan} onOpenChange={() => setViewPlan(null)}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>План работ: {viewPlan?.name}</DialogTitle></DialogHeader>
+          {viewPlan && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div><Label className="text-gray-500">Направление</Label><p className="font-medium">{viewPlan.workDirection?.name}</p></div>
+                <div><Label className="text-gray-500">Объект</Label><p className="font-medium">{viewPlan.building?.name}</p></div>
+                <div><Label className="text-gray-500">Номер контракта</Label><p className="font-medium">{viewPlan.contractNumber || '-'}</p></div>
+                <div><Label className="text-gray-500">Статус</Label><p><Badge className={statusColors.workPlan[viewPlan.status]}>{statusLabels.workPlan[viewPlan.status]}</Badge></p></div>
+                <div><Label className="text-gray-500">Дата начала</Label><p className="font-medium">{formatDate(viewPlan.startDate)}</p></div>
+                <div><Label className="text-gray-500">Дата окончания</Label><p className="font-medium">{formatDate(viewPlan.endDate)}</p></div>
+              </div>
+              <div className="pt-4 border-t">
+                <Label className="text-gray-500">Сумма</Label>
+                <p className="text-2xl font-bold">{formatCurrency(viewPlan.totalAmount)}</p>
+              </div>
+              {viewPlan.notes && (
+                <div><Label className="text-gray-500">Примечания</Label><p className="mt-1">{viewPlan.notes}</p></div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setViewPlan(null)}>Закрыть</Button>
+            <Button onClick={() => { setEditPlan(viewPlan); setViewPlan(null) }}>Редактировать</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Диалог редактирования плана */}
+      <Dialog open={!!editPlan} onOpenChange={() => setEditPlan(null)}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>Редактирование плана работ</DialogTitle></DialogHeader>
+          {editPlan && (
+            <EditPlanForm plan={editPlan} onClose={() => setEditPlan(null)} onSuccess={fetchData} directions={directions} buildings={buildings} />
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
+// Форма редактирования плана работ
+function EditPlanForm({ plan, onClose, onSuccess, directions, buildings }: { plan: WorkPlan; onClose: () => void; onSuccess: () => void; directions: unknown[]; buildings: unknown[] }) {
+  const [name, setName] = useState(plan.name)
+  const [contractNumber, setContractNumber] = useState(plan.contractNumber || '')
+  const [totalAmount, setTotalAmount] = useState(plan.totalAmount)
+  const [status, setStatus] = useState(plan.status)
+  const [notes, setNotes] = useState(plan.notes || '')
+  const [loading, setLoading] = useState(false)
+
+  const handleSave = async () => {
+    setLoading(true)
+    const res = await fetch(`/api/plans/${plan.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, contractNumber, totalAmount: Number(totalAmount), status, notes }),
+    })
+    setLoading(false)
+    if (res.ok) {
+      toast.success('План работ обновлен')
+      onSuccess()
+      onClose()
+    } else {
+      toast.error('Ошибка обновления')
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div><Label>Название</Label><Input value={name} onChange={(e) => setName(e.target.value)} /></div>
+      <div><Label>Номер контракта</Label><Input value={contractNumber} onChange={(e) => setContractNumber(e.target.value)} /></div>
+      <div><Label>Сумма (₽)</Label><Input type="number" value={totalAmount} onChange={(e) => setTotalAmount(Number(e.target.value))} /></div>
+      <div><Label>Статус</Label>
+        <Select value={status} onValueChange={(v) => setStatus(v as typeof status)}>
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="DRAFT">Черновик</SelectItem>
+            <SelectItem value="APPROVED">Согласован</SelectItem>
+            <SelectItem value="IN_PROGRESS">В работе</SelectItem>
+            <SelectItem value="COMPLETED">Завершен</SelectItem>
+            <SelectItem value="CANCELLED">Отменен</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div><Label>Примечания</Label><Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} /></div>
+      <DialogFooter>
+        <Button variant="outline" onClick={onClose}>Отмена</Button>
+        <Button onClick={handleSave} disabled={loading}>{loading ? 'Сохранение...' : 'Сохранить'}</Button>
+      </DialogFooter>
     </div>
   )
 }
@@ -2331,6 +2437,8 @@ function HiddenActsSection() {
   const { hiddenWorkActs, setHiddenWorkActs, workPlans, setWorkPlans } = useAppStore()
   const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [viewAct, setViewAct] = useState<HiddenWorkAct | null>(null)
+  const [editAct, setEditAct] = useState<HiddenWorkAct | null>(null)
 
   const fetchData = () => {
     Promise.all([
@@ -2340,6 +2448,80 @@ function HiddenActsSection() {
   }
 
   useEffect(() => { fetchData() }, [])
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Удалить акт?')) return
+    const res = await fetch(`/api/documents/hidden-acts/${id}`, { method: 'DELETE' })
+    if (res.ok) {
+      toast.success('Акт удален')
+      fetchData()
+    } else {
+      toast.error('Ошибка удаления')
+    }
+  }
+
+  const handlePrint = (act: HiddenWorkAct) => {
+    const printWindow = window.open('', '_blank')
+    if (printWindow) {
+      printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <title>Акт скрытых работ № ${act.number}</title>
+          <style>
+            @page { size: A4; margin: 15mm; }
+            body { font-family: "Times New Roman", Times, serif; font-size: 12pt; line-height: 1.4; }
+            .title { text-align: center; font-size: 16pt; font-weight: bold; margin: 10mm 0; }
+            .subtitle { text-align: center; font-size: 11pt; margin: 5mm 0; }
+            table { border-collapse: collapse; width: 100%; margin: 5mm 0; }
+            th, td { border: 1px solid black; padding: 2mm 3mm; text-align: left; }
+            .no-border { border: none; }
+            .no-border td { border: none; padding: 1mm 2mm; }
+            .bold { font-weight: bold; }
+            .right { text-align: right; }
+          </style>
+        </head>
+        <body>
+          <div class="title">АКТ<br>ОСМОТРА СКРЫТЫХ РАБОТ</div>
+          <div class="subtitle">Акт № ${act.number}</div>
+          
+          <table class="no-border">
+            <tr><td style="width: 50mm;">Наименование работ</td><td class="bold">${act.name}</td></tr>
+            <tr><td>Место проведения</td><td>${act.location || '-'}</td></tr>
+            <tr><td>Дата выполнения</td><td>${formatDate(act.executedAt)}</td></tr>
+          </table>
+          
+          <p><b>Описание работ:</b></p>
+          <p>${act.description}</p>
+          
+          <table style="margin-top: 10mm;">
+            <tr>
+              <th>Должность</th>
+              <th>ФИО</th>
+              <th>Подпись</th>
+            </tr>
+            <tr>
+              <td>Представитель подрядчика<br>${act.contractorPosition || ''}</td>
+              <td>${act.contractorName || ''}</td>
+              <td></td>
+            </tr>
+            <tr>
+              <td>Представитель заказчика<br>${act.customerPosition || ''}</td>
+              <td>${act.customerName || ''}</td>
+              <td></td>
+            </tr>
+          </table>
+          
+          <p style="margin-top: 10mm;">Дата составления акта: ${act.signedAt ? formatDate(act.signedAt) : formatDate(new Date())}</p>
+        </body>
+        </html>
+      `)
+      printWindow.document.close()
+      printWindow.focus()
+      printWindow.print()
+    }
+  }
 
   if (loading) return <div className="p-6">Загрузка...</div>
 
@@ -2366,9 +2548,14 @@ function HiddenActsSection() {
                     <p className="text-sm text-gray-400 mt-1">Выполнено: {formatDate(act.executedAt)}</p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-col items-end gap-2">
                   <Badge className={statusColors.hiddenAct[act.status]}>{statusLabels.hiddenAct[act.status]}</Badge>
-                  <Button variant="outline" size="sm"><Printer className="w-4 h-4" /></Button>
+                  <div className="flex gap-1">
+                    <Button variant="outline" size="sm" onClick={() => setViewAct(act)}><Eye className="w-4 h-4" /></Button>
+                    <Button variant="outline" size="sm" onClick={() => setEditAct(act)}><Edit className="w-4 h-4" /></Button>
+                    <Button variant="outline" size="sm" onClick={() => handlePrint(act)}><Printer className="w-4 h-4" /></Button>
+                    <Button variant="outline" size="sm" className="text-red-600" onClick={() => handleDelete(act.id)}><X className="w-4 h-4" /></Button>
+                  </div>
                 </div>
               </div>
             </CardContent>
@@ -2380,6 +2567,101 @@ function HiddenActsSection() {
       </div>
 
       <CreateDialog type="hiddenAct" open={dialogOpen} onOpenChange={setDialogOpen} onSuccess={fetchData} data={{ workPlans }} />
+
+      {/* Диалог просмотра акта */}
+      <Dialog open={!!viewAct} onOpenChange={() => setViewAct(null)}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>Акт скрытых работ № {viewAct?.number}</DialogTitle></DialogHeader>
+          {viewAct && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div><Label className="text-gray-500">Наименование</Label><p className="font-medium">{viewAct.name}</p></div>
+                <div><Label className="text-gray-500">Место проведения</Label><p className="font-medium">{viewAct.location || '-'}</p></div>
+                <div><Label className="text-gray-500">Дата выполнения</Label><p className="font-medium">{formatDate(viewAct.executedAt)}</p></div>
+                <div><Label className="text-gray-500">Статус</Label><p><Badge className={statusColors.hiddenAct[viewAct.status]}>{statusLabels.hiddenAct[viewAct.status]}</Badge></p></div>
+              </div>
+              <div><Label className="text-gray-500">Описание работ</Label><p className="mt-1">{viewAct.description}</p></div>
+              <div className="grid grid-cols-2 gap-4 pt-4 border-t">
+                <div><Label className="text-gray-500">Представитель подрядчика</Label><p>{viewAct.contractorName} ({viewAct.contractorPosition})</p></div>
+                <div><Label className="text-gray-500">Представитель заказчика</Label><p>{viewAct.customerName} ({viewAct.customerPosition})</p></div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setViewAct(null)}>Закрыть</Button>
+            <Button onClick={() => { setEditAct(viewAct); setViewAct(null) }}>Редактировать</Button>
+            <Button onClick={() => { if (viewAct) handlePrint(viewAct) }}><Printer className="w-4 h-4 mr-2" />Печать</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Диалог редактирования акта */}
+      <Dialog open={!!editAct} onOpenChange={() => setEditAct(null)}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>Редактирование акта</DialogTitle></DialogHeader>
+          {editAct && (
+            <EditHiddenActForm act={editAct} onClose={() => setEditAct(null)} onSuccess={fetchData} />
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
+// Форма редактирования акта скрытых работ
+function EditHiddenActForm({ act, onClose, onSuccess }: { act: HiddenWorkAct; onClose: () => void; onSuccess: () => void }) {
+  const [name, setName] = useState(act.name)
+  const [description, setDescription] = useState(act.description)
+  const [location, setLocation] = useState(act.location || '')
+  const [status, setStatus] = useState(act.status)
+  const [contractorName, setContractorName] = useState(act.contractorName || '')
+  const [contractorPosition, setContractorPosition] = useState(act.contractorPosition || '')
+  const [customerName, setCustomerName] = useState(act.customerName || '')
+  const [customerPosition, setCustomerPosition] = useState(act.customerPosition || '')
+  const [loading, setLoading] = useState(false)
+
+  const handleSave = async () => {
+    setLoading(true)
+    const res = await fetch(`/api/documents/hidden-acts/${act.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, description, location, status, contractorName, contractorPosition, customerName, customerPosition }),
+    })
+    setLoading(false)
+    if (res.ok) {
+      toast.success('Акт обновлен')
+      onSuccess()
+      onClose()
+    } else {
+      toast.error('Ошибка обновления')
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div><Label>Наименование работ</Label><Input value={name} onChange={(e) => setName(e.target.value)} /></div>
+      <div><Label>Описание</Label><Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} /></div>
+      <div><Label>Место проведения</Label><Input value={location} onChange={(e) => setLocation(e.target.value)} /></div>
+      <div><Label>Статус</Label>
+        <Select value={status} onValueChange={(v) => setStatus(v as typeof status)}>
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="DRAFT">Черновик</SelectItem>
+            <SelectItem value="SIGNED">Подписан</SelectItem>
+            <SelectItem value="APPROVED">Утвержден</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="grid grid-cols-2 gap-4 pt-4 border-t">
+        <div><Label>Представитель подрядчика (ФИО)</Label><Input value={contractorName} onChange={(e) => setContractorName(e.target.value)} /></div>
+        <div><Label>Должность</Label><Input value={contractorPosition} onChange={(e) => setContractorPosition(e.target.value)} /></div>
+        <div><Label>Представитель заказчика (ФИО)</Label><Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} /></div>
+        <div><Label>Должность</Label><Input value={customerPosition} onChange={(e) => setCustomerPosition(e.target.value)} /></div>
+      </div>
+      <DialogFooter>
+        <Button variant="outline" onClick={onClose}>Отмена</Button>
+        <Button onClick={handleSave} disabled={loading}>{loading ? 'Сохранение...' : 'Сохранить'}</Button>
+      </DialogFooter>
     </div>
   )
 }
@@ -2389,12 +2671,25 @@ function EmployeesSection() {
   const { employees, setEmployees } = useAppStore()
   const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [viewEmployee, setViewEmployee] = useState<Employee | null>(null)
+  const [editEmployee, setEditEmployee] = useState<Employee | null>(null)
 
   const fetchData = () => {
     fetch('/api/employees').then(res => res.json()).then(data => { setEmployees(data); setLoading(false) })
   }
 
   useEffect(() => { fetchData() }, [])
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Удалить сотрудника?')) return
+    const res = await fetch(`/api/employees/${id}`, { method: 'DELETE' })
+    if (res.ok) {
+      toast.success('Сотрудник удален')
+      fetchData()
+    } else {
+      toast.error('Ошибка удаления')
+    }
+  }
 
   if (loading) return <div className="p-6">Загрузка...</div>
 
@@ -2424,8 +2719,9 @@ function EmployeesSection() {
                 <div className="flex justify-between"><span className="text-gray-500">Ставка:</span><span>{formatCurrency(emp.monthlySalary)}/мес</span></div>
               </div>
               <div className="mt-4 flex gap-2">
-                <Button variant="outline" size="sm" className="flex-1"><Eye className="w-4 h-4 mr-1" />Профиль</Button>
-                <Button variant="outline" size="sm"><Edit className="w-4 h-4" /></Button>
+                <Button variant="outline" size="sm" className="flex-1" onClick={() => setViewEmployee(emp)}><Eye className="w-4 h-4 mr-1" />Профиль</Button>
+                <Button variant="outline" size="sm" onClick={() => setEditEmployee(emp)}><Edit className="w-4 h-4" /></Button>
+                <Button variant="outline" size="sm" className="text-red-600" onClick={() => handleDelete(emp.id)}><X className="w-4 h-4" /></Button>
               </div>
             </CardContent>
           </Card>
@@ -2433,6 +2729,100 @@ function EmployeesSection() {
       </div>
 
       <CreateDialog type="employee" open={dialogOpen} onOpenChange={setDialogOpen} onSuccess={fetchData} />
+
+      {/* Диалог просмотра профиля */}
+      <Dialog open={!!viewEmployee} onOpenChange={() => setViewEmployee(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Профиль сотрудника</DialogTitle></DialogHeader>
+          {viewEmployee && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-4">
+                <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center">
+                  <span className="text-blue-700 font-bold text-xl">{viewEmployee.fullName.split(' ').map(n => n[0]).join('').slice(0, 2)}</span>
+                </div>
+                <div>
+                  <p className="font-bold text-lg">{viewEmployee.fullName}</p>
+                  <p className="text-gray-500">{viewEmployee.position}</p>
+                </div>
+              </div>
+              <div className="space-y-2 text-sm">
+                {viewEmployee.phone && <div className="flex justify-between"><span className="text-gray-500">Телефон:</span><span>{viewEmployee.phone}</span></div>}
+                {viewEmployee.email && <div className="flex justify-between"><span className="text-gray-500">Email:</span><span>{viewEmployee.email}</span></div>}
+                <div className="flex justify-between"><span className="text-gray-500">Специальность:</span><span>{viewEmployee.specialty || '-'}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Ставка:</span><span>{formatCurrency(viewEmployee.monthlySalary)}/мес</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Почасовая:</span><span>{formatCurrency(viewEmployee.hourlyRate)}/час</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Статус:</span><Badge className={statusColors.employee[viewEmployee.status]}>{statusLabels.employee[viewEmployee.status]}</Badge></div>
+                {viewEmployee.hireDate && <div className="flex justify-between"><span className="text-gray-500">Дата найма:</span><span>{formatDate(viewEmployee.hireDate)}</span></div>}
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setViewEmployee(null)}>Закрыть</Button>
+            <Button onClick={() => { setEditEmployee(viewEmployee); setViewEmployee(null) }}>Редактировать</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Диалог редактирования */}
+      <Dialog open={!!editEmployee} onOpenChange={() => setEditEmployee(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Редактирование сотрудника</DialogTitle></DialogHeader>
+          {editEmployee && (
+            <EditEmployeeForm employee={editEmployee} onClose={() => setEditEmployee(null)} onSuccess={fetchData} />
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
+// Форма редактирования сотрудника
+function EditEmployeeForm({ employee, onClose, onSuccess }: { employee: Employee; onClose: () => void; onSuccess: () => void }) {
+  const [fullName, setFullName] = useState(employee.fullName)
+  const [phone, setPhone] = useState(employee.phone || '')
+  const [position, setPosition] = useState(employee.position || '')
+  const [monthlySalary, setMonthlySalary] = useState(employee.monthlySalary)
+  const [status, setStatus] = useState(employee.status)
+  const [loading, setLoading] = useState(false)
+
+  const handleSave = async () => {
+    setLoading(true)
+    const res = await fetch(`/api/employees/${employee.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fullName, phone, position, monthlySalary: Number(monthlySalary), status }),
+    })
+    setLoading(false)
+    if (res.ok) {
+      toast.success('Сотрудник обновлен')
+      onSuccess()
+      onClose()
+    } else {
+      toast.error('Ошибка обновления')
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div><Label>ФИО</Label><Input value={fullName} onChange={(e) => setFullName(e.target.value)} /></div>
+      <div><Label>Телефон</Label><Input value={phone} onChange={(e) => setPhone(e.target.value)} /></div>
+      <div><Label>Должность</Label><Input value={position} onChange={(e) => setPosition(e.target.value)} /></div>
+      <div><Label>Ставка/мес</Label><Input type="number" value={monthlySalary} onChange={(e) => setMonthlySalary(Number(e.target.value))} /></div>
+      <div><Label>Статус</Label>
+        <Select value={status} onValueChange={(v) => setStatus(v as typeof status)}>
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ACTIVE">Работает</SelectItem>
+            <SelectItem value="VACATION">В отпуске</SelectItem>
+            <SelectItem value="SICK">На больничном</SelectItem>
+            <SelectItem value="FIRED">Уволен</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <DialogFooter>
+        <Button variant="outline" onClick={onClose}>Отмена</Button>
+        <Button onClick={handleSave} disabled={loading}>{loading ? 'Сохранение...' : 'Сохранить'}</Button>
+      </DialogFooter>
     </div>
   )
 }
@@ -3029,15 +3419,18 @@ function SafetySection() {
 
   const fetchData = () => {
     Promise.all([
-      fetch('/api/safety').then(r => r.json()),
       fetch('/api/safety/briefings').then(r => r.json()),
       fetch('/api/safety/records').then(r => r.json()),
       fetch('/api/employees').then(r => r.json()),
-    ]).then(([safety, briefs, records, emps]) => { 
-      setBriefings(briefs || safety); 
-      setSafetyRecords(records || []); 
-      setEmployees(emps); 
+    ]).then(([briefs, records, emps]) => { 
+      setBriefings(Array.isArray(briefs) ? briefs : []); 
+      setSafetyRecords(Array.isArray(records) ? records : []); 
+      setEmployees(Array.isArray(emps) ? emps : []); 
       setLoading(false) 
+    }).catch(() => {
+      setBriefings([])
+      setSafetyRecords([])
+      setLoading(false)
     })
   }
 
@@ -3059,6 +3452,9 @@ function SafetySection() {
         </TabsList>
 
         <TabsContent value="briefings" className="space-y-4 mt-4">
+          {briefings.length === 0 && (
+            <Card><CardContent className="p-8 text-center text-gray-500">Нет инструктажей</CardContent></Card>
+          )}
           {briefings.map((b) => (
             <Card key={b.id}>
               <CardContent className="p-4">
@@ -3121,6 +3517,43 @@ function SafetySection() {
 // ==================== НАСТРОЙКИ ====================
 function SettingsSection() {
   const user = useAppStore((s) => s.user)
+  const [backingUp, setBackingUp] = useState(false)
+  const [reloading, setReloading] = useState(false)
+
+  const handleBackup = async () => {
+    setBackingUp(true)
+    try {
+      const res = await fetch('/api/settings/backup')
+      if (res.ok) {
+        const blob = await res.blob()
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `stroycomplex-backup-${new Date().toISOString().split('T')[0]}.db`
+        a.click()
+        URL.revokeObjectURL(url)
+        toast.success('Бэкап создан')
+      } else {
+        toast.error('Ошибка создания бэкапа')
+      }
+    } catch (error) {
+      toast.error('Ошибка создания бэкапа')
+    }
+    setBackingUp(false)
+  }
+
+  const handleReload = async () => {
+    if (!confirm('Перезагрузить приложение? Все несохранённые данные будут потеряны.')) return
+    setReloading(true)
+    try {
+      await fetch('/api/settings/reload', { method: 'POST' })
+      toast.success('Приложение перезагружается...')
+      setTimeout(() => window.location.reload(), 1000)
+    } catch (error) {
+      toast.error('Ошибка перезагрузки')
+      setReloading(false)
+    }
+  }
 
   return (
     <div className="p-6 space-y-6">
@@ -3161,6 +3594,16 @@ function SettingsSection() {
             <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
               <div><p className="font-medium">PWA</p><p className="text-sm text-gray-500">Мобильное приложение</p></div>
               <Badge className="bg-blue-100 text-blue-800">Активно</Badge>
+            </div>
+            <div className="pt-4 space-y-2">
+              <Button variant="outline" className="w-full" onClick={handleBackup} disabled={backingUp}>
+                <Download className="w-4 h-4 mr-2" />
+                {backingUp ? 'Создание бэкапа...' : 'Создать бэкап базы данных'}
+              </Button>
+              <Button variant="outline" className="w-full text-orange-600 hover:text-orange-700" onClick={handleReload} disabled={reloading}>
+                <Settings className="w-4 h-4 mr-2" />
+                {reloading ? 'Перезагрузка...' : 'Перезагрузить приложение'}
+              </Button>
             </div>
           </CardContent>
         </Card>
