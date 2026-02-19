@@ -49,28 +49,38 @@ export async function POST(request: NextRequest) {
         number: { contains: `/${year}` }
       }
     })
-    const number = `КС-2-${String(count + 1).padStart(3, '0')}/${year}`
+    const number = data.number || `КС-2-${String(count + 1).padStart(3, '0')}/${year}`
+
+    // Подготовка items
+    const items = data.items && Array.isArray(data.items) && data.items.length > 0
+      ? data.items.map((item: { name: string; unit: string; quantity: number; unitPrice: number; totalAmount?: number }, index: number) => ({
+          lineNumber: index + 1,
+          name: item.name || '',
+          unit: item.unit || 'шт',
+          quantity: Number(item.quantity) || 0,
+          unitPrice: Number(item.unitPrice) || 0,
+          totalAmount: Number(item.totalAmount) || (Number(item.quantity) || 0) * (Number(item.unitPrice) || 0),
+        }))
+      : []
+
+    // Подсчёт сумм
+    const totalAmount = items.reduce((sum: number, item: { totalAmount: number }) => sum + item.totalAmount, 0)
+    const vatAmount = totalAmount * 0.2
+    const totalWithVat = totalAmount * 1.2
 
     const document = await db.documentKS2.create({
       data: {
         number,
-        workPlanId: data.workPlanId,
-        period: new Date(data.period),
-        totalAmount: data.totalAmount || 0,
-        vatAmount: data.vatAmount || 0,
-        totalWithVat: data.totalWithVat || 0,
+        workPlanId: data.workPlanId || undefined,
+        period: data.period ? new Date(data.period) : new Date(),
+        totalAmount: data.totalAmount ?? totalAmount,
+        vatAmount: data.vatAmount ?? vatAmount,
+        totalWithVat: data.totalWithVat ?? totalWithVat,
         status: data.status || 'DRAFT',
-        notes: data.notes,
-        createdById: data.createdById,
-        items: data.items ? {
-          create: data.items.map((item: Record<string, unknown>, index: number) => ({
-            lineNumber: index + 1,
-            name: item.name as string,
-            unit: item.unit as string,
-            quantity: item.quantity as number,
-            unitPrice: item.unitPrice as number,
-            totalAmount: item.totalAmount as number,
-          }))
+        notes: data.notes || null,
+        createdById: data.createdById || null,
+        items: items.length > 0 ? {
+          create: items
         } : undefined
       },
       include: {

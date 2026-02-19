@@ -175,7 +175,7 @@ enum WorkStageStatus {
 model DocumentKS2 {
   id              String          @id @default(cuid())
   number          String          @unique // Номер документа
-  workPlanId      String
+  workPlanId      String?
   period          DateTime        // Отчетный период
   totalAmount     Float           @default(0)
   vatAmount       Float           @default(0)
@@ -189,7 +189,7 @@ model DocumentKS2 {
   updatedAt       DateTime        @updatedAt
 
   // Связи
-  workPlan        WorkPlan        @relation(fields: [workPlanId], references: [id])
+  workPlan        WorkPlan?       @relation(fields: [workPlanId], references: [id])
   items           DocumentKS2Item[]
   documentsKS3    DocumentKS3[]
 
@@ -389,7 +389,7 @@ enum PaymentStatus {
 model InstallationOrder {
   id             String               @id @default(cuid())
   number         String               @unique
-  workPlanId     String
+  workPlanId     String?
   workStageId    String?
   name           String
   description    String?
@@ -407,10 +407,11 @@ model InstallationOrder {
   totalTimeMinutes Int                @default(0) // Общее время работы в минутах
 
   // Связи
-  workPlan       WorkPlan             @relation(fields: [workPlanId], references: [id])
+  workPlan       WorkPlan?            @relation(fields: [workPlanId], references: [id])
   workStage      WorkStage?           @relation(fields: [workStageId], references: [id])
   createdBy      User?                @relation("OrderCreator", fields: [createdById], references: [id])
   assignees      OrderAssignee[]
+  items          OrderItem[]
 
   @@map("installation_orders")
 }
@@ -426,6 +427,21 @@ model OrderAssignee {
   employee         Employee @relation(fields: [employeeId], references: [id])
 
   @@map("order_assignees")
+}
+
+model OrderItem {
+  id          String   @id @default(cuid())
+  orderId     String
+  name        String   // Наименование работы
+  unit        String   @default("шт") // Ед. измерения
+  quantity    Float    @default(1) // Количество
+  unitPrice   Float    @default(0) // Цена за единицу
+  notes       String?  // Примечания
+
+  // Связи
+  order       InstallationOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("order_items")
 }
 
 enum InstallationOrderStatus {

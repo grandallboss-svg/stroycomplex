@@ -23,6 +23,9 @@ export async function GET(
           }
         },
         createdBy: true,
+        items: {
+          orderBy: { id: 'asc' }
+        },
       },
     })
 
@@ -62,11 +65,9 @@ export async function PUT(
     // Расчёт времени при смене статуса
     if (currentOrder?.startedAt) {
       if (data.status === 'PAUSED' && currentOrder.status === 'IN_PROGRESS') {
-        // Пауза - считаем время работы
         const workedMinutes = Math.floor((now.getTime() - new Date(currentOrder.startedAt).getTime()) / (1000 * 60))
         totalTimeMinutes += workedMinutes
       } else if (data.status === 'COMPLETED' && currentOrder.status === 'IN_PROGRESS') {
-        // Завершение - считаем время работы
         const workedMinutes = Math.floor((now.getTime() - new Date(currentOrder.startedAt).getTime()) / (1000 * 60))
         totalTimeMinutes += workedMinutes
       }
@@ -78,6 +79,7 @@ export async function PUT(
       notes: data.notes,
       description: data.description,
       location: data.location,
+      name: data.name,
       deadline: data.deadline ? new Date(data.deadline) : undefined,
     }
 
@@ -92,6 +94,28 @@ export async function PUT(
     }
 
     updateData.totalTimeMinutes = totalTimeMinutes
+
+    // Обновление состава работ если передан
+    if (data.items !== undefined) {
+      // Удаляем старые работы
+      await db.orderItem.deleteMany({
+        where: { orderId: id }
+      })
+      
+      // Создаём новые
+      if (data.items && Array.isArray(data.items) && data.items.length > 0) {
+        await db.orderItem.createMany({
+          data: data.items.map((item: { name: string; unit: string; quantity: number; unitPrice: number; notes?: string }) => ({
+            orderId: id,
+            name: item.name,
+            unit: item.unit || 'шт',
+            quantity: Number(item.quantity) || 1,
+            unitPrice: Number(item.unitPrice) || 0,
+            notes: item.notes,
+          }))
+        })
+      }
+    }
 
     const order = await db.installationOrder.update({
       where: { id },
@@ -108,6 +132,7 @@ export async function PUT(
             employee: true,
           }
         },
+        items: true,
       },
     })
 
@@ -128,7 +153,12 @@ export async function DELETE(
   try {
     const { id } = await params
     
-    // Сначала удаляем связанные назначения
+    // Удаляем связанные работы
+    await db.orderItem.deleteMany({
+      where: { orderId: id }
+    })
+    
+    // Удаляем связанные назначения
     await db.orderAssignee.deleteMany({
       where: { orderId: id }
     })

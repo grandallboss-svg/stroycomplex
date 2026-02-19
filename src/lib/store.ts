@@ -95,7 +95,7 @@ export interface DocumentKS2Item {
 export interface DocumentKS2 {
   id: string
   number: string
-  workPlanId: string
+  workPlanId: string | null
   period: string
   totalAmount: number
   vatAmount: number
@@ -121,6 +121,8 @@ export interface DocumentKS3 {
   previousTotal: number
   currentTotal: number
   status: 'DRAFT' | 'SIGNED' | 'APPROVED'
+  notes: string | null
+  createdAt: string
   workPlan?: WorkPlan
   documentKS2?: DocumentKS2
 }
@@ -168,23 +170,36 @@ export interface OrderAssignee {
   employee?: Employee
 }
 
+export interface OrderItem {
+  id: string
+  orderId: string
+  name: string
+  unit: string
+  quantity: number
+  unitPrice: number
+  notes: string | null
+}
+
 export interface InstallationOrder {
   id: string
   number: string
-  workPlanId: string
+  workPlanId: string | null
   workStageId: string | null
   name: string
   description: string | null
   location: string | null
   deadline: string | null
-  status: 'DRAFT' | 'ASSIGNED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED'
+  status: 'DRAFT' | 'ASSIGNED' | 'IN_PROGRESS' | 'PAUSED' | 'COMPLETED' | 'CANCELLED'
   priority: number
   notes: string | null
   createdAt: string
   completedAt: string | null
+  startedAt: string | null
+  totalTimeMinutes: number
   workPlan?: WorkPlan
   workStage?: WorkStage
   assignees?: OrderAssignee[]
+  items?: OrderItem[]
 }
 
 export interface SafetyBriefing {

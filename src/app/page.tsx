@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useAppStore, formatCurrency, formatDate, statusLabels, statusColors } from '@/lib/store'
+import { useAppStore, formatCurrency, formatDate, statusLabels, statusColors, DocumentKS2, DocumentKS3, InstallationOrder } from '@/lib/store'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -256,11 +256,12 @@ function CreateDialog({ type, open, onOpenChange, onSuccess, data }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   onSuccess: () => void
-  data?: { directions: unknown[], buildings: unknown[], workPlans: unknown[], employees: unknown[], documentsKS2: unknown[], briefings: unknown[] }
+  data?: Partial<{ directions: unknown[], buildings: unknown[], workPlans: unknown[], employees: unknown[], documentsKS2: unknown[], briefings: unknown[], orders: unknown[] }>
 }) {
   const [loading, setLoading] = useState(false)
   const [form, setForm] = useState<Record<string, string | number | unknown[]>>({})
   const [items, setItems] = useState<Array<{name: string; unit: string; quantity: number; unitPrice: number}>>([])
+  const [selectedOrderId, setSelectedOrderId] = useState<string>('')
 
   const endpoints: Record<string, string> = {
     direction: '/api/directions',
@@ -273,6 +274,25 @@ function CreateDialog({ type, open, onOpenChange, onSuccess, data }: {
     order: '/api/orders',
     salary: '/api/salary',
     safety: '/api/safety/records',
+  }
+
+  // Импорт работ из наряда
+  const importFromOrder = () => {
+    if (!selectedOrderId) return
+    const order = ((data?.orders as {id: string, number: string, name: string, items?: {name: string, unit: string, quantity: number, unitPrice: number}[]}[]) || []).find(o => o.id === selectedOrderId)
+    if (order && order.items && order.items.length > 0) {
+      const newItems = order.items.map(item => ({
+        name: item.name,
+        unit: item.unit,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice
+      }))
+      setItems([...items, ...newItems])
+      toast.success(`Импортировано ${newItems.length} позиций из наряда ${order.number}`)
+      setSelectedOrderId('')
+    } else {
+      toast.error('В наряде нет позиций для импорта')
+    }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -468,9 +488,35 @@ function CreateDialog({ type, open, onOpenChange, onSuccess, data }: {
               <div className="border-t pt-4">
                 <div className="flex items-center justify-between mb-2">
                   <Label>Позиции работ</Label>
-                  <Button type="button" variant="outline" size="sm" onClick={addItem}><Plus className="w-4 h-4 mr-1" />Добавить</Button>
+                  <div className="flex gap-2">
+                    <Button type="button" variant="outline" size="sm" onClick={addItem}><Plus className="w-4 h-4 mr-1" />Добавить вручную</Button>
+                  </div>
                 </div>
-                {items.length === 0 && <p className="text-sm text-gray-500">Нажмите "Добавить" для добавления позиций</p>}
+                
+                {/* Импорт из наряда */}
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+                  <Label className="text-blue-800 mb-2 block">Импорт из наряда</Label>
+                  <div className="flex gap-2">
+                    <Select value={selectedOrderId} onValueChange={setSelectedOrderId}>
+                      <SelectTrigger className="flex-1">
+                        <SelectValue placeholder="Выберите наряд для импорта" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {((data?.orders as {id: string, number: string, name: string, status: string}[]) || []).map((o) => (
+                          <SelectItem key={o.id} value={o.id}>
+                            {o.number} - {o.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button type="button" variant="secondary" size="sm" onClick={importFromOrder} disabled={!selectedOrderId}>
+                      <Briefcase className="w-4 h-4 mr-1" />Импортировать
+                    </Button>
+                  </div>
+                  <p className="text-xs text-blue-600 mt-1">Работы из наряда будут добавлены к существующим позициям</p>
+                </div>
+                
+                {items.length === 0 && <p className="text-sm text-gray-500">Добавьте позиции вручную или импортируйте из наряда</p>}
                 {items.map((item, idx) => (
                   <div key={idx} className="grid grid-cols-12 gap-2 mb-2 items-end">
                     <div className="col-span-5"><Input placeholder="Наименование" value={item.name} onChange={(e) => updateItem(idx, 'name', e.target.value)} /></div>
@@ -1278,7 +1324,7 @@ function GanttChartView({ plans }: { plans: unknown[] }) {
 
 // ==================== КС-2 ====================
 function KS2Section() {
-  const { documentsKS2, setDocumentsKS2, workPlans, setWorkPlans } = useAppStore()
+  const { documentsKS2, setDocumentsKS2, workPlans, setWorkPlans, orders, setOrders } = useAppStore()
   const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [viewDoc, setViewDoc] = useState<typeof documentsKS2[0] | null>(null)
@@ -1288,7 +1334,8 @@ function KS2Section() {
     Promise.all([
       fetch('/api/documents/ks2').then(r => r.json()),
       fetch('/api/plans').then(r => r.json()),
-    ]).then(([docs, plans]) => { setDocumentsKS2(docs); setWorkPlans(plans); setLoading(false) })
+      fetch('/api/orders').then(r => r.json()),
+    ]).then(([docs, plans, ords]) => { setDocumentsKS2(docs); setWorkPlans(plans); setOrders(ords); setLoading(false) })
   }
 
   useEffect(() => { fetchData() }, [])
@@ -1347,7 +1394,7 @@ function KS2Section() {
         )}
       </div>
 
-      <CreateDialog type="ks2" open={dialogOpen} onOpenChange={setDialogOpen} onSuccess={fetchData} data={{ workPlans }} />
+      <CreateDialog type="ks2" open={dialogOpen} onOpenChange={setDialogOpen} onSuccess={fetchData} data={{ workPlans, orders }} />
 
       {/* Диалог просмотра КС-2 */}
       <Dialog open={!!viewDoc} onOpenChange={() => setViewDoc(null)}>
@@ -1636,7 +1683,8 @@ function KS2Section() {
 }
 
 // Форма редактирования КС-2
-function EditKS2Form({ doc, onClose, onSuccess }: { doc: typeof documentsKS2[0]; onClose: () => void; onSuccess: () => void }) {
+function EditKS2Form({ doc, onClose, onSuccess }: { doc: DocumentKS2; onClose: () => void; onSuccess: () => void }) {
+  const { orders } = useAppStore()
   const [status, setStatus] = useState(doc.status)
   const [notes, setNotes] = useState(doc.notes || '')
   const [loading, setLoading] = useState(false)
@@ -1649,6 +1697,7 @@ function EditKS2Form({ doc, onClose, onSuccess }: { doc: typeof documentsKS2[0];
       totalAmount: item.totalAmount
     })) || []
   )
+  const [selectedOrderId, setSelectedOrderId] = useState<string>('')
 
   const addItem = () => {
     setItems([...items, { name: '', unit: 'шт', quantity: 1, unitPrice: 0, totalAmount: 0 }])
@@ -1666,6 +1715,26 @@ function EditKS2Form({ doc, onClose, onSuccess }: { doc: typeof documentsKS2[0];
 
   const removeItem = (index: number) => {
     setItems(items.filter((_, i) => i !== index))
+  }
+
+  // Импорт работ из наряда
+  const importFromOrder = () => {
+    if (!selectedOrderId) return
+    const order = orders.find(o => o.id === selectedOrderId)
+    if (order && order.items && order.items.length > 0) {
+      const newItems = order.items.map(item => ({
+        name: item.name,
+        unit: item.unit,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        totalAmount: item.quantity * item.unitPrice
+      }))
+      setItems([...items, ...newItems])
+      toast.success(`Импортировано ${newItems.length} позиций из наряда ${order.number}`)
+      setSelectedOrderId('')
+    } else {
+      toast.error('В наряде нет позиций для импорта')
+    }
   }
 
   const totalAmount = items.reduce((sum, item) => sum + item.totalAmount, 0)
@@ -1709,7 +1778,7 @@ function EditKS2Form({ doc, onClose, onSuccess }: { doc: typeof documentsKS2[0];
         </div>
         <div>
           <Label>Статус</Label>
-          <Select value={status} onValueChange={setStatus}>
+          <Select value={status} onValueChange={(v) => setStatus(v as typeof status)}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="DRAFT">Черновик</SelectItem>
@@ -1728,9 +1797,33 @@ function EditKS2Form({ doc, onClose, onSuccess }: { doc: typeof documentsKS2[0];
       <div className="border-t pt-4">
         <div className="flex items-center justify-between mb-2">
           <Label>Позиции работ</Label>
-          <Button type="button" variant="outline" size="sm" onClick={addItem}><Plus className="w-4 h-4 mr-1" />Добавить</Button>
+          <Button type="button" variant="outline" size="sm" onClick={addItem}><Plus className="w-4 h-4 mr-1" />Добавить вручную</Button>
         </div>
-        {items.length === 0 && <p className="text-sm text-gray-500">Нажмите "Добавить" для добавления позиций</p>}
+        
+        {/* Импорт из наряда */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+          <Label className="text-blue-800 mb-2 block">Импорт из наряда</Label>
+          <div className="flex gap-2">
+            <Select value={selectedOrderId} onValueChange={setSelectedOrderId}>
+              <SelectTrigger className="flex-1">
+                <SelectValue placeholder="Выберите наряд для импорта" />
+              </SelectTrigger>
+              <SelectContent>
+                {orders.map((o) => (
+                  <SelectItem key={o.id} value={o.id}>
+                    {o.number} - {o.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button type="button" variant="secondary" size="sm" onClick={importFromOrder} disabled={!selectedOrderId}>
+              <Briefcase className="w-4 h-4 mr-1" />Импортировать
+            </Button>
+          </div>
+          <p className="text-xs text-blue-600 mt-1">Работы из наряда будут добавлены к существующим позициям</p>
+        </div>
+        
+        {items.length === 0 && <p className="text-sm text-gray-500">Добавьте позиции вручную или импортируйте из наряда</p>}
         <div className="max-h-64 overflow-y-auto">
           {items.map((item, idx) => (
             <div key={idx} className="grid grid-cols-12 gap-2 mb-2 items-end">
@@ -1764,8 +1857,8 @@ function KS3Section() {
   const { documentsKS3, setDocumentsKS3, documentsKS2, setDocumentsKS2, workPlans, setWorkPlans } = useAppStore()
   const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [viewDoc, setViewDoc] = useState<typeof documentsKS3[0] | null>(null)
-  const [editDoc, setEditDoc] = useState<typeof documentsKS3[0] | null>(null)
+  const [viewDoc, setViewDoc] = useState<DocumentKS3 | null>(null)
+  const [editDoc, setEditDoc] = useState<DocumentKS3 | null>(null)
 
   const fetchData = () => {
     Promise.all([
@@ -2091,7 +2184,7 @@ function KS3Section() {
 }
 
 // Форма редактирования КС-3
-function EditKS3Form({ doc, onClose, onSuccess }: { doc: typeof documentsKS3[0]; onClose: () => void; onSuccess: () => void }) {
+function EditKS3Form({ doc, onClose, onSuccess }: { doc: DocumentKS3; onClose: () => void; onSuccess: () => void }) {
   const { documentsKS2 } = useAppStore()
   const [status, setStatus] = useState(doc.status)
   const [notes, setNotes] = useState(doc.notes || '')
@@ -2143,7 +2236,7 @@ function EditKS3Form({ doc, onClose, onSuccess }: { doc: typeof documentsKS3[0];
         </div>
         <div>
           <Label>Статус</Label>
-          <Select value={status} onValueChange={setStatus}>
+          <Select value={status} onValueChange={(v) => setStatus(v as typeof status)}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="DRAFT">Черновик</SelectItem>
@@ -2440,6 +2533,7 @@ function OrdersSection() {
   const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editOrder, setEditOrder] = useState<typeof orders[0] | null>(null)
+  const [viewOrder, setViewOrder] = useState<typeof orders[0] | null>(null)
   const [timers, setTimers] = useState<Record<string, number>>({})
 
   const fetchData = () => {
@@ -2447,7 +2541,7 @@ function OrdersSection() {
       fetch('/api/orders').then(r => r.json()),
       fetch('/api/employees').then(r => r.json()),
       fetch('/api/plans').then(r => r.json()),
-    ]).then(([ords, emps, plans]) => { setOrders(ords); setEmployees(emps); setWorkPlans(plans); setLoading(false) })
+    ]).then(([ords, emps, plans]) => { setOrders(Array.isArray(ords) ? ords : []); setEmployees(Array.isArray(emps) ? emps : []); setWorkPlans(Array.isArray(plans) ? plans : []); setLoading(false) })
   }
 
   useEffect(() => { fetchData() }, [])
@@ -2606,8 +2700,9 @@ function OrdersSection() {
                   </div>
                   {/* Кнопки действий */}
                   <div className="flex items-center gap-1">
-                    <Button variant="ghost" size="sm" onClick={() => setEditOrder(order)}><Edit className="w-4 h-4" /></Button>
-                    <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700" onClick={() => handleDelete(order.id)}><X className="w-4 h-4" /></Button>
+                    <Button variant="ghost" size="sm" onClick={() => setViewOrder(order)} title="Просмотр"><Eye className="w-4 h-4" /></Button>
+                    <Button variant="ghost" size="sm" onClick={() => setEditOrder(order)} title="Редактировать"><Edit className="w-4 h-4" /></Button>
+                    <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700" onClick={() => handleDelete(order.id)} title="Удалить"><X className="w-4 h-4" /></Button>
                   </div>
                 </div>
               </div>
@@ -2621,9 +2716,114 @@ function OrdersSection() {
 
       <CreateDialog type="order" open={dialogOpen} onOpenChange={setDialogOpen} onSuccess={fetchData} data={{ workPlans, employees }} />
 
+      {/* Диалог просмотра наряда */}
+      <Dialog open={!!viewOrder} onOpenChange={() => setViewOrder(null)}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>Наряд {viewOrder?.number}</DialogTitle></DialogHeader>
+          {viewOrder && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-gray-500">Статус</Label>
+                  <p><Badge className={statusColors.order[viewOrder.status]}>{statusLabels.order[viewOrder.status]}</Badge></p>
+                </div>
+                <div>
+                  <Label className="text-gray-500">Приоритет</Label>
+                  <p>{viewOrder.priority === 1 ? 'Низкий' : viewOrder.priority === 2 ? 'Средний' : 'Высокий'}</p>
+                </div>
+                <div className="col-span-2">
+                  <Label className="text-gray-500">Наименование работ</Label>
+                  <p className="font-medium">{viewOrder.name}</p>
+                </div>
+                <div>
+                  <Label className="text-gray-500">Место проведения</Label>
+                  <p>{viewOrder.location || '-'}</p>
+                </div>
+                <div>
+                  <Label className="text-gray-500">Срок выполнения</Label>
+                  <p>{formatDate(viewOrder.deadline)}</p>
+                </div>
+              </div>
+
+              {viewOrder.description && (
+                <div>
+                  <Label className="text-gray-500">Описание</Label>
+                  <p className="text-sm mt-1">{viewOrder.description}</p>
+                </div>
+              )}
+
+              {/* Исполнители */}
+              {viewOrder.assignees && viewOrder.assignees.length > 0 && (
+                <div>
+                  <Label className="text-gray-500">Исполнители</Label>
+                  <div className="flex flex-wrap gap-2 mt-1">
+                    {viewOrder.assignees.map((a) => (
+                      <Badge key={a.id} variant="outline">{a.employee?.fullName}</Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Состав работ */}
+              {viewOrder.items && viewOrder.items.length > 0 ? (
+                <div>
+                  <Label className="text-gray-500 mb-2 block">Состав работ</Label>
+                  <div className="border rounded-lg overflow-hidden">
+                    <table className="w-full">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="text-left p-3 text-sm font-medium text-gray-500">Наименование</th>
+                          <th className="text-center p-3 text-sm font-medium text-gray-500">Ед.</th>
+                          <th className="text-right p-3 text-sm font-medium text-gray-500">Кол-во</th>
+                          <th className="text-right p-3 text-sm font-medium text-gray-500">Цена</th>
+                          <th className="text-right p-3 text-sm font-medium text-gray-500">Сумма</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {viewOrder.items.map((item) => (
+                          <tr key={item.id} className="hover:bg-gray-50">
+                            <td className="p-3 text-sm">{item.name}</td>
+                            <td className="p-3 text-sm text-center">{item.unit}</td>
+                            <td className="p-3 text-sm text-right">{item.quantity}</td>
+                            <td className="p-3 text-sm text-right">{formatCurrency(item.unitPrice)}</td>
+                            <td className="p-3 text-sm text-right font-medium">{formatCurrency(item.quantity * item.unitPrice)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot className="bg-gray-50">
+                        <tr>
+                          <td colSpan={4} className="p-3 text-sm font-medium text-right">Итого:</td>
+                          <td className="p-3 text-sm font-bold text-right">
+                            {formatCurrency(viewOrder.items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0))}
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-sm text-gray-500 italic">Состав работ не указан</div>
+              )}
+
+              {viewOrder.notes && (
+                <div>
+                  <Label className="text-gray-500">Примечания</Label>
+                  <p className="text-sm mt-1">{viewOrder.notes}</p>
+                </div>
+              )}
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setViewOrder(null)}>Закрыть</Button>
+                <Button onClick={() => { const o = viewOrder; setViewOrder(null); setEditOrder(o); }}>Редактировать</Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* Диалог редактирования наряда */}
       <Dialog open={!!editOrder} onOpenChange={() => setEditOrder(null)}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Редактирование {editOrder?.number}</DialogTitle></DialogHeader>
           {editOrder && (
             <EditOrderForm order={editOrder} onClose={() => setEditOrder(null)} onSuccess={fetchData} />
@@ -2635,7 +2835,7 @@ function OrdersSection() {
 }
 
 // Форма редактирования наряда
-function EditOrderForm({ order, onClose, onSuccess }: { order: typeof orders[0]; onClose: () => void; onSuccess: () => void }) {
+function EditOrderForm({ order, onClose, onSuccess }: { order: InstallationOrder; onClose: () => void; onSuccess: () => void }) {
   const { workPlans, employees } = useAppStore()
   const [name, setName] = useState(order.name)
   const [description, setDescription] = useState(order.description || '')
@@ -2643,7 +2843,22 @@ function EditOrderForm({ order, onClose, onSuccess }: { order: typeof orders[0];
   const [priority, setPriority] = useState(order.priority)
   const [deadline, setDeadline] = useState(order.deadline ? new Date(order.deadline).toISOString().split('T')[0] : '')
   const [notes, setNotes] = useState(order.notes || '')
+  const [items, setItems] = useState<Array<{id?: string; name: string; unit: string; quantity: number; unitPrice: number}>>(order.items || [])
   const [loading, setLoading] = useState(false)
+
+  const addItem = () => {
+    setItems([...items, { name: '', unit: 'шт', quantity: 1, unitPrice: 0 }])
+  }
+
+  const updateItem = (index: number, field: string, value: string | number) => {
+    const newItems = [...items]
+    newItems[index] = { ...newItems[index], [field]: value }
+    setItems(newItems)
+  }
+
+  const removeItem = (index: number) => {
+    setItems(items.filter((_, i) => i !== index))
+  }
 
   const handleSave = async () => {
     setLoading(true)
@@ -2657,6 +2872,7 @@ function EditOrderForm({ order, onClose, onSuccess }: { order: typeof orders[0];
         priority,
         deadline: deadline || null,
         notes,
+        items: items.filter(i => i.name),
       }),
     })
     setLoading(false)
@@ -2722,6 +2938,79 @@ function EditOrderForm({ order, onClose, onSuccess }: { order: typeof orders[0];
           </div>
         </div>
       )}
+
+      {/* Состав работ */}
+      <div className="border-t pt-4">
+        <div className="flex items-center justify-between mb-2">
+          <Label>Состав работ</Label>
+          <Button type="button" variant="outline" size="sm" onClick={addItem}><Plus className="w-4 h-4 mr-1" />Добавить</Button>
+        </div>
+        {items.length === 0 && <p className="text-sm text-gray-500">Нажмите "Добавить" для добавления позиций</p>}
+        {items.length > 0 && (
+          <div className="border rounded-lg overflow-hidden">
+            <table className="w-full">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="text-left p-2 text-sm font-medium text-gray-500">Наименование</th>
+                  <th className="text-center p-2 text-sm font-medium text-gray-500 w-16">Ед.</th>
+                  <th className="text-right p-2 text-sm font-medium text-gray-500 w-20">Кол-во</th>
+                  <th className="text-right p-2 text-sm font-medium text-gray-500 w-24">Цена</th>
+                  <th className="w-10"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {items.map((item, idx) => (
+                  <tr key={idx}>
+                    <td className="p-2">
+                      <Input 
+                        placeholder="Наименование" 
+                        value={item.name} 
+                        onChange={(e) => updateItem(idx, 'name', e.target.value)} 
+                        className="border-0 h-8 text-sm"
+                      />
+                    </td>
+                    <td className="p-2">
+                      <Input 
+                        placeholder="Ед." 
+                        value={item.unit} 
+                        onChange={(e) => updateItem(idx, 'unit', e.target.value)} 
+                        className="border-0 h-8 text-sm text-center"
+                      />
+                    </td>
+                    <td className="p-2">
+                      <Input 
+                        type="number" 
+                        value={item.quantity} 
+                        onChange={(e) => updateItem(idx, 'quantity', parseFloat(e.target.value) || 0)} 
+                        className="border-0 h-8 text-sm text-right"
+                      />
+                    </td>
+                    <td className="p-2">
+                      <Input 
+                        type="number" 
+                        value={item.unitPrice} 
+                        onChange={(e) => updateItem(idx, 'unitPrice', parseFloat(e.target.value) || 0)} 
+                        className="border-0 h-8 text-sm text-right"
+                      />
+                    </td>
+                    <td className="p-2">
+                      <Button type="button" variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => removeItem(idx)}>
+                        <X className="w-4 h-4 text-gray-400 hover:text-red-500" />
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {items.length > 0 && (
+          <div className="mt-2 p-3 bg-gray-50 rounded-lg flex justify-between text-sm">
+            <span className="text-gray-500">Итого:</span>
+            <span className="font-bold">{formatCurrency(items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0))}</span>
+          </div>
+        )}
+      </div>
 
       <DialogFooter>
         <Button variant="outline" onClick={onClose}>Отмена</Button>

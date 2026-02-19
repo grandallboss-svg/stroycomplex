@@ -27,6 +27,9 @@ export async function GET(request: NextRequest) {
             employee: true,
           }
         },
+        items: {
+          orderBy: { id: 'asc' }
+        },
       }
     })
     return NextResponse.json(orders)
@@ -52,7 +55,7 @@ export async function POST(request: NextRequest) {
     const order = await db.installationOrder.create({
       data: {
         number,
-        workPlanId: data.workPlanId,
+        workPlanId: data.workPlanId || null,
         workStageId: data.workStageId,
         name: data.name,
         description: data.description,
@@ -62,9 +65,18 @@ export async function POST(request: NextRequest) {
         priority: data.priority || 2,
         notes: data.notes,
         createdById: data.createdById,
-        assignees: data.assigneeIds ? {
+        assignees: data.assigneeIds && data.assigneeIds.length > 0 ? {
           create: data.assigneeIds.map((id: string) => ({
             employeeId: id,
+          }))
+        } : undefined,
+        items: data.items && data.items.length > 0 ? {
+          create: data.items.map((item: { name: string; unit: string; quantity: number; unitPrice: number; notes?: string }) => ({
+            name: item.name,
+            unit: item.unit || 'шт',
+            quantity: Number(item.quantity) || 1,
+            unitPrice: Number(item.unitPrice) || 0,
+            notes: item.notes,
           }))
         } : undefined
       },
@@ -76,6 +88,7 @@ export async function POST(request: NextRequest) {
             employee: true,
           }
         },
+        items: true,
       }
     })
     return NextResponse.json(order)
@@ -103,6 +116,7 @@ export async function PUT(request: NextRequest) {
             employee: true,
           }
         },
+        items: true,
       }
     })
     return NextResponse.json(order)
