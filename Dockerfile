@@ -10,14 +10,14 @@ RUN bun install --frozen-lockfile
 # Сборка
 FROM base AS builder
 # Копируем package.json и node_modules
-COPY --from=deps /app/node_modules ./node_modules
 COPY package.json ./
+COPY --from=deps /app/node_modules ./node_modules
 
 # Копируем prisma схему и генерируем клиент
 COPY prisma ./prisma
 RUN bunx prisma generate
 
-# Копируем остальной код
+# Копируем остальной код (исключая node_modules через .dockerignore)
 COPY . .
 
 # Сборка Next.js
@@ -42,6 +42,7 @@ COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
+COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
 
 # Создание директории для базы данных
 RUN mkdir -p /app/data && chown -R nextjs:nodejs /app/data
@@ -57,5 +58,5 @@ ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 ENV DATABASE_URL="file:/app/data/stroycomplex.db"
 
-# Запуск
-CMD ["bun", "server.js"]
+# Запуск с инициализацией базы
+CMD ["sh", "-c", "bunx prisma migrate deploy && bun server.js"]
