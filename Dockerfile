@@ -36,8 +36,8 @@ COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/prisma ./prisma
 
-# Установка Prisma CLI и клиента для миграций
-RUN bun add prisma @prisma/client
+# Установка конкретной версии Prisma 6 (не 7!)
+RUN bun add prisma@6 @prisma/client@6
 
 # Права доступа
 RUN chown -R nextjs:nodejs /app
