@@ -5,7 +5,7 @@ WORKDIR /app
 # Установка зависимостей
 FROM base AS deps
 COPY package.json bun.lockb* ./
-RUN bun install --frozen-lockfile --production=false
+RUN bun install --frozen-lockfile
 
 # Сборка
 FROM base AS builder
