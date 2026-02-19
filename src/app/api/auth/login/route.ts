@@ -1,4 +1,4 @@
-import { db } from '@/lib/db'
+import { db, ensureDbInitialized } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 
 import bcrypt from 'bcryptjs'
@@ -6,6 +6,9 @@ import bcrypt from 'bcryptjs'
 // POST /api/auth/login - Вход в систему
 export async function POST(request: NextRequest) {
   try {
+    // Инициализируем базу данных если нужно
+    await ensureDbInitialized()
+
     const { email, password } = await request.json()
 
     if (!email || !password) {
