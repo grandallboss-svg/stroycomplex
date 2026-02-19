@@ -8,12 +8,14 @@ services:
     environment:
       - NODE_ENV=production
       - DATABASE_URL=file:/app/data/stroycomplex.db
-      # Добавьте ваш Telegram Bot Token:
-      # - TELEGRAM_BOT_TOKEN=123456789:ABCdef...
-      # - WEB_APP_URL=https://your-domain.com
     volumes:
       - stroycomplex_data:/app/data
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/dashboard"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 volumes:
   stroycomplex_data:

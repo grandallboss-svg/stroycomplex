@@ -26,7 +26,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# Создание пользователя для безопасности
+# Создание пользователя
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
@@ -35,9 +35,11 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 
-# Установка конкретной версии Prisma 6 (не 7!)
-RUN bun add prisma@6 @prisma/client@6
+# Создание директории для базы данных
+RUN mkdir -p /app/data && chown -R nextjs:nodejs /app/data
 
 # Права доступа
 RUN chown -R nextjs:nodejs /app
@@ -48,6 +50,7 @@ EXPOSE 3000
 
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
+ENV DATABASE_URL="file:/app/data/stroycomplex.db"
 
-# Инициализация БД и запуск
-CMD ["sh", "-c", "bunx prisma migrate deploy && node server.js"]
+# Запуск
+CMD ["bun", "server.js"]
