@@ -14,7 +14,6 @@ npm-debug.log*
 *.tsbuildinfo
 next-env.d.ts
 public/uploads
-db/*.db
 db/*.db-journal
 skills
 download

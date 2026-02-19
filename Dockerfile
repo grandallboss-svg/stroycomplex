@@ -44,8 +44,10 @@ COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
 
-# Создание директории для базы данных
-RUN mkdir -p /app/data && chown -R nextjs:nodejs /app/data
+# Создание директории для базы данных и копирование шаблона
+RUN mkdir -p /app/data
+COPY --from=builder /app/db/custom.db /app/data/stroycomplex.db
+RUN chown -R nextjs:nodejs /app/data
 
 # Права доступа
 RUN chown -R nextjs:nodejs /app
@@ -58,5 +60,5 @@ ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 ENV DATABASE_URL="file:/app/data/stroycomplex.db"
 
-# Запуск с миграцией используя локальный prisma
-CMD ["sh", "-c", "./node_modules/prisma/build/index.js migrate deploy && bun server.js"]
+# Запуск приложения (база инициализируется автоматически через ensureDbInitialized)
+CMD ["bun", "server.js"]
