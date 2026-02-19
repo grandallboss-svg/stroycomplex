@@ -58,5 +58,5 @@ ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 ENV DATABASE_URL="file:/app/data/stroycomplex.db"
 
-# Запуск с инициализацией базы
-CMD ["sh", "-c", "bunx prisma migrate deploy && bun server.js"]
+# Запуск с миграцией используя локальный prisma
+CMD ["sh", "-c", "./node_modules/prisma/build/index.js migrate deploy && bun server.js"]
