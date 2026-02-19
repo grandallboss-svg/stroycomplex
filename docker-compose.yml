@@ -1,0 +1,19 @@
+services:
+  stroycomplex:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=file:/app/data/stroycomplex.db
+      # Добавьте ваш Telegram Bot Token:
+      # - TELEGRAM_BOT_TOKEN=123456789:ABCdef...
+      # - WEB_APP_URL=https://your-domain.com
+    volumes:
+      - stroycomplex_data:/app/data
+    restart: unless-stopped
+
+volumes:
+  stroycomplex_data:

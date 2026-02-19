@@ -50,6 +50,8 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="apple-mobile-web-app-title" content="СтройКомплекс" />
+        {/* Telegram Mini Apps SDK */}
+        <script src="https://telegram.org/js/telegram-web-app.js" async></script>
       </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
