@@ -3515,24 +3515,53 @@ function SafetySection() {
 }
 
 // ==================== НАСТРОЙКИ ====================
+interface BackupItem {
+  id: string
+  filename: string
+  size: number
+  createdAt: string
+  isActive: boolean
+}
+
 function SettingsSection() {
   const user = useAppStore((s) => s.user)
   const [backingUp, setBackingUp] = useState(false)
   const [reloading, setReloading] = useState(false)
+  const [backups, setBackups] = useState<BackupItem[]>([])
+  const [loadingBackups, setLoadingBackups] = useState(true)
+  const [uploadingBackup, setUploadingBackup] = useState(false)
+  const [activatingBackup, setActivatingBackup] = useState<string | null>(null)
+  const fileInputRef = useState<HTMLInputElement | null>(null)[0]
+
+  const loadBackups = async () => {
+    try {
+      const res = await fetch('/api/settings/backups')
+      if (res.ok) {
+        const data = await res.json()
+        setBackups(data)
+      }
+    } catch (error) {
+      console.error('Error loading backups:', error)
+    } finally {
+      setLoadingBackups(false)
+    }
+  }
+
+  useEffect(() => {
+    loadBackups()
+  }, [])
 
   const handleBackup = async () => {
     setBackingUp(true)
     try {
-      const res = await fetch('/api/settings/backup')
+      const res = await fetch('/api/settings/backups', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: `${new Date().toISOString().split('T')[0]}-manual` })
+      })
       if (res.ok) {
-        const blob = await res.blob()
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = `stroycomplex-backup-${new Date().toISOString().split('T')[0]}.db`
-        a.click()
-        URL.revokeObjectURL(url)
         toast.success('Бэкап создан')
+        loadBackups()
       } else {
         toast.error('Ошибка создания бэкапа')
       }
@@ -3540,6 +3569,96 @@ function SettingsSection() {
       toast.error('Ошибка создания бэкапа')
     }
     setBackingUp(false)
+  }
+
+  const handleDownloadBackup = async (backupId: string) => {
+    try {
+      const res = await fetch(`/api/settings/backups/${backupId}`)
+      if (res.ok) {
+        const blob = await res.blob()
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `${backupId}.db`
+        a.click()
+        URL.revokeObjectURL(url)
+        toast.success('Бэкап скачан')
+      } else {
+        toast.error('Ошибка скачивания')
+      }
+    } catch (error) {
+      toast.error('Ошибка скачивания')
+    }
+  }
+
+  const handleUploadBackup = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    if (!file.name.endsWith('.db')) {
+      toast.error('Файл должен иметь расширение .db')
+      return
+    }
+
+    setUploadingBackup(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('name', file.name.replace('.db', ''))
+
+      const res = await fetch('/api/settings/backups', {
+        method: 'POST',
+        body: formData
+      })
+
+      if (res.ok) {
+        toast.success('Бэкап загружен')
+        loadBackups()
+      } else {
+        const data = await res.json()
+        toast.error(data.error || 'Ошибка загрузки')
+      }
+    } catch (error) {
+      toast.error('Ошибка загрузки')
+    }
+    setUploadingBackup(false)
+    e.target.value = ''
+  }
+
+  const handleActivateBackup = async (backupId: string) => {
+    if (!confirm(`Переключиться на бэкап "${backupId}"? Текущая база данных будет сохранена автоматически.`)) return
+    
+    setActivatingBackup(backupId)
+    try {
+      const res = await fetch(`/api/settings/backups/${backupId}`, { method: 'POST' })
+      if (res.ok) {
+        toast.success('Бэкап активирован. Перезагрузите приложение.')
+        setTimeout(() => window.location.reload(), 1500)
+      } else {
+        const data = await res.json()
+        toast.error(data.error || 'Ошибка активации')
+      }
+    } catch (error) {
+      toast.error('Ошибка активации')
+    }
+    setActivatingBackup(null)
+  }
+
+  const handleDeleteBackup = async (backupId: string) => {
+    if (!confirm(`Удалить бэкап "${backupId}"?`)) return
+    
+    try {
+      const res = await fetch(`/api/settings/backups/${backupId}`, { method: 'DELETE' })
+      if (res.ok) {
+        toast.success('Бэкап удален')
+        loadBackups()
+      } else {
+        const data = await res.json()
+        toast.error(data.error || 'Ошибка удаления')
+      }
+    } catch (error) {
+      toast.error('Ошибка удаления')
+    }
   }
 
   const handleReload = async () => {
@@ -3553,6 +3672,12 @@ function SettingsSection() {
       toast.error('Ошибка перезагрузки')
       setReloading(false)
     }
+  }
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} Б`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} КБ`
+    return `${(bytes / (1024 * 1024)).toFixed(1)} МБ`
   }
 
   return (
@@ -3608,6 +3733,114 @@ function SettingsSection() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Управление бэкапами */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle>Управление бэкапами</CardTitle>
+            <div className="flex gap-2">
+              <input
+                type="file"
+                accept=".db"
+                onChange={handleUploadBackup}
+                className="hidden"
+                id="backup-upload"
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => document.getElementById('backup-upload')?.click()}
+                disabled={uploadingBackup}
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                {uploadingBackup ? 'Загрузка...' : 'Загрузить бэкап'}
+              </Button>
+              <Button variant="outline" size="sm" onClick={loadBackups}>
+                Обновить
+              </Button>
+            </div>
+          </div>
+          <CardDescription>
+            Создавайте, загружайте и переключайтесь между резервными копиями базы данных
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loadingBackups ? (
+            <div className="text-center py-8 text-gray-500">Загрузка списка бэкапов...</div>
+          ) : backups.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              Нет сохраненных бэкапов. Создайте новый бэкап или загрузите существующий.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {backups.map((backup) => (
+                <div
+                  key={backup.id}
+                  className={`flex items-center justify-between p-4 rounded-lg border ${
+                    backup.isActive ? 'border-green-300 bg-green-50' : 'border-gray-200 hover:bg-gray-50'
+                  }`}
+                >
+                  <div className="flex items-center gap-4">
+                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                      backup.isActive ? 'bg-green-100' : 'bg-gray-100'
+                    }`}>
+                      <FileText className={`w-5 h-5 ${backup.isActive ? 'text-green-600' : 'text-gray-600'}`} />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium">{backup.id}</p>
+                        {backup.isActive && (
+                          <Badge className="bg-green-100 text-green-800 text-xs">Активен</Badge>
+                        )}
+                      </div>
+                      <p className="text-sm text-gray-500">
+                        {formatFileSize(backup.size)} • {formatDate(backup.createdAt)}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleDownloadBackup(backup.id)}
+                      title="Скачать"
+                    >
+                      <Download className="w-4 h-4" />
+                    </Button>
+                    {!backup.isActive && (
+                      <>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleActivateBackup(backup.id)}
+                          disabled={activatingBackup === backup.id}
+                          title="Активировать"
+                        >
+                          {activatingBackup === backup.id ? (
+                            <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <Eye className="w-4 h-4" />
+                          )}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-red-600 hover:text-red-700"
+                          onClick={() => handleDeleteBackup(backup.id)}
+                          title="Удалить"
+                        >
+                          <X className="w-4 h-4" />
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }
