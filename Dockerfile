@@ -9,11 +9,16 @@ RUN bun install --frozen-lockfile
 
 # Сборка
 FROM base AS builder
+# Копируем package.json и node_modules
 COPY --from=deps /app/node_modules ./node_modules
-COPY . .
+COPY package.json ./
 
-# Генерация Prisma клиента
+# Копируем prisma схему и генерируем клиент
+COPY prisma ./prisma
 RUN bunx prisma generate
+
+# Копируем остальной код
+COPY . .
 
 # Сборка Next.js
 ENV NEXT_TELEMETRY_DISABLED=1
