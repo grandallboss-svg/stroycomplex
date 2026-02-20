@@ -1,5 +1,5 @@
 # Dockerfile для СтройКомплекс
-FROM oven/bun:1-alpine AS base
+FROM oven/bun:1.2-alpine AS base
 WORKDIR /app
 
 # Установка зависимостей
@@ -36,7 +36,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN bun run build
 
 # Production образ
-FROM oven/bun:1-alpine AS runner
+FROM oven/bun:1.2-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
