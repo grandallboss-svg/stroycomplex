@@ -112,8 +112,8 @@ model WorkPlan {
   updatedAt       DateTime        @updatedAt
 
   // Связи
-  workDirection   WorkDirection   @relation(fields: [workDirectionId], references: [id])
-  building        Building        @relation(fields: [buildingId], references: [id])
+  workDirection   WorkDirection   @relation(fields: [workDirectionId], references: [id], onDelete: Cascade)
+  building        Building        @relation(fields: [buildingId], references: [id], onDelete: Cascade)
   stages          WorkStage[]
   documentsKS2    DocumentKS2[]
   documentsKS3    DocumentKS3[]
@@ -156,6 +156,7 @@ model WorkStage {
   hiddenWorkActs HiddenWorkAct[]
   assignments    WorkAssignment[]
   orders         InstallationOrder[]
+  works          Work[]
 
   @@map("work_stages")
 }
@@ -166,6 +167,28 @@ enum WorkStageStatus {
   COMPLETED   // Завершен
   DELAYED     // Задержан
   CANCELLED   // Отменен
+}
+
+// ============================================
+// СОСТАВ РАБОТ (внутри этапа)
+// ============================================
+
+model Work {
+  id          String   @id @default(cuid())
+  workStageId String
+  name        String   // Наименование работы
+  unit        String   @default("шт") // Ед. измерения
+  quantity    Float    @default(1) // Количество по плану
+  unitPrice   Float    @default(0) // Цена за единицу
+  notes       String?  // Примечания
+  order       Int      @default(0) // Порядок
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Связи
+  workStage   WorkStage @relation(fields: [workStageId], references: [id], onDelete: Cascade)
+
+  @@map("works")
 }
 
 // ============================================

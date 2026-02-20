@@ -16,7 +16,7 @@ import {
   LayoutDashboard, Network, Flame, Wind, Building2, FileText, Users, 
   DollarSign, ClipboardList, Shield, Settings, Menu, X, LogOut, 
   Plus, Edit, Eye, Calendar, Briefcase, FileSpreadsheet, FileCheck,
-  Printer, Download, Table, GanttChart
+  Printer, Download, Table, GanttChart, Database, Trash2
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -251,6 +251,16 @@ function Sidebar() {
 }
 
 // ==================== ДИАЛОГ СОЗДАНИЯ ====================
+type StageType = {
+  id?: string
+  name: string
+  description?: string
+  startDate?: string
+  endDate?: string
+  plannedAmount?: number
+  works: { name: string; unit: string; quantity: number; unitPrice: number }[]
+}
+
 function CreateDialog({ type, open, onOpenChange, onSuccess, data }: {
   type: 'direction' | 'building' | 'plan' | 'employee' | 'ks2' | 'ks3' | 'hiddenAct' | 'order' | 'salary' | 'safety'
   open: boolean
@@ -262,6 +272,7 @@ function CreateDialog({ type, open, onOpenChange, onSuccess, data }: {
   const [form, setForm] = useState<Record<string, string | number | unknown[]>>({})
   const [items, setItems] = useState<Array<{name: string; unit: string; quantity: number; unitPrice: number}>>([])
   const [selectedOrderId, setSelectedOrderId] = useState<string>('')
+  const [stages, setStages] = useState<StageType[]>([]) // Этапы для плана работ
 
   const endpoints: Record<string, string> = {
     direction: '/api/directions',
@@ -295,6 +306,58 @@ function CreateDialog({ type, open, onOpenChange, onSuccess, data }: {
     }
   }
 
+  // Добавить этап
+  const addStage = () => {
+    setStages([...stages, { name: '', works: [] }])
+  }
+
+  // Удалить этап
+  const removeStage = (idx: number) => {
+    setStages(stages.filter((_, i) => i !== idx))
+  }
+
+  // Обновить этап
+  const updateStage = (idx: number, field: string, value: string | number) => {
+    const newStages = [...stages]
+    newStages[idx] = { ...newStages[idx], [field]: value }
+    setStages(newStages)
+  }
+
+  // Добавить работу в этап
+  const addWorkToStage = (stageIdx: number) => {
+    const newStages = [...stages]
+    newStages[stageIdx].works.push({ name: '', unit: 'шт', quantity: 1, unitPrice: 0 })
+    setStages(newStages)
+  }
+
+  // Удалить работу из этапа
+  const removeWorkFromStage = (stageIdx: number, workIdx: number) => {
+    const newStages = [...stages]
+    newStages[stageIdx].works = newStages[stageIdx].works.filter((_, i) => i !== workIdx)
+    setStages(newStages)
+  }
+
+  // Обновить работу в этапе
+  const updateWorkInStage = (stageIdx: number, workIdx: number, field: string, value: string | number) => {
+    const newStages = [...stages]
+    newStages[stageIdx].works[workIdx] = { ...newStages[stageIdx].works[workIdx], [field]: value }
+    setStages(newStages)
+  }
+
+  // Импорт работ из наряда в этап
+  const importWorksToStage = (stageIdx: number, orderId: string) => {
+    if (!orderId) return
+    const order = ((data?.orders as {id: string, number: string, name: string, items?: {name: string, unit: string, quantity: number, unitPrice: number}[]}[]) || []).find(o => o.id === orderId)
+    if (order && order.items && order.items.length > 0) {
+      const newStages = [...stages]
+      newStages[stageIdx].works = [...newStages[stageIdx].works, ...order.items]
+      setStages(newStages)
+      toast.success(`Импортировано ${order.items.length} работ из наряда ${order.number}`)
+    } else {
+      toast.error('В наряде нет работ для импорта')
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
@@ -304,6 +367,7 @@ function CreateDialog({ type, open, onOpenChange, onSuccess, data }: {
     if (type === 'plan') {
       body.startDate = form.startDate || new Date().toISOString()
       body.endDate = form.endDate || new Date().toISOString()
+      body.stages = stages.filter(s => s.name) // Добавляем этапы с работами
     }
     
     if (type === 'ks2') {
@@ -341,6 +405,7 @@ function CreateDialog({ type, open, onOpenChange, onSuccess, data }: {
       toast.success('Запись создана')
       setForm({})
       setItems([])
+      setStages([])
       onSuccess()
       onOpenChange(false)
     } else {
@@ -442,6 +507,90 @@ function CreateDialog({ type, open, onOpenChange, onSuccess, data }: {
                 <div><Label>Окончание</Label><Input type="date" value={form.endDate as string || ''} onChange={(e) => setForm({...form, endDate: e.target.value})} /></div>
               </div>
               <div><Label>Сумма (₽)</Label><Input type="number" value={form.totalAmount as string || ''} onChange={(e) => setForm({...form, totalAmount: e.target.value})} /></div>
+              
+              {/* Этапы и состав работ */}
+              <div className="border-t pt-4">
+                <div className="flex items-center justify-between mb-3">
+                  <Label className="text-base font-semibold">Этапы и состав работ</Label>
+                  <Button type="button" variant="outline" size="sm" onClick={addStage}><Plus className="w-4 h-4 mr-1" />Добавить этап</Button>
+                </div>
+                
+                {stages.length === 0 && (
+                  <p className="text-sm text-gray-500 text-center py-4 bg-gray-50 rounded-lg">
+                    Нажмите "Добавить этап" для создания структуры работ
+                  </p>
+                )}
+                
+                {stages.map((stage, stageIdx) => (
+                  <div key={stageIdx} className="border rounded-lg p-4 mb-4 bg-gray-50">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="font-medium text-sm">Этап {stageIdx + 1}</span>
+                      <Button type="button" variant="ghost" size="sm" className="text-red-600" onClick={() => removeStage(stageIdx)}><X className="w-4 h-4" /></Button>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-3 mb-3">
+                      <div><Label className="text-xs">Название этапа</Label><Input value={stage.name} onChange={(e) => updateStage(stageIdx, 'name', e.target.value)} placeholder="Название этапа" /></div>
+                      <div><Label className="text-xs">Сумма этапа (₽)</Label><Input type="number" value={stage.plannedAmount || ''} onChange={(e) => updateStage(stageIdx, 'plannedAmount', parseFloat(e.target.value) || 0)} placeholder="0" /></div>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-3 mb-3">
+                      <div><Label className="text-xs">Начало</Label><Input type="date" value={stage.startDate || ''} onChange={(e) => updateStage(stageIdx, 'startDate', e.target.value)} /></div>
+                      <div><Label className="text-xs">Окончание</Label><Input type="date" value={stage.endDate || ''} onChange={(e) => updateStage(stageIdx, 'endDate', e.target.value)} /></div>
+                    </div>
+                    
+                    {/* Состав работ этапа */}
+                    <div className="border-t pt-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <Label className="text-xs font-medium">Состав работ этапа</Label>
+                        <div className="flex gap-2">
+                          <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={() => addWorkToStage(stageIdx)}><Plus className="w-3 h-3 mr-1" />Добавить</Button>
+                        </div>
+                      </div>
+                      
+                      {/* Импорт из наряда в этап */}
+                      <div className="flex gap-2 mb-2">
+                        <Select value="" onValueChange={(v) => v && importWorksToStage(stageIdx, v)}>
+                          <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Импорт из наряда..." /></SelectTrigger>
+                          <SelectContent>
+                            {((data?.orders as {id: string, number: string, name: string, items?: unknown[]}[]) || []).map((o) => (
+                              <SelectItem key={o.id} value={o.id}>{o.number} - {o.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      
+                      {stage.works.length === 0 && (
+                        <p className="text-xs text-gray-400 text-center py-2">Нет работ</p>
+                      )}
+                      
+                      {stage.works.length > 0 && (
+                        <div className="space-y-2">
+                          {stage.works.map((work, workIdx) => (
+                            <div key={workIdx} className="grid grid-cols-12 gap-1 items-end">
+                              <div className="col-span-5"><Input className="h-8 text-xs" placeholder="Наименование" value={work.name} onChange={(e) => updateWorkInStage(stageIdx, workIdx, 'name', e.target.value)} /></div>
+                              <div className="col-span-2"><Input className="h-8 text-xs" placeholder="Ед." value={work.unit} onChange={(e) => updateWorkInStage(stageIdx, workIdx, 'unit', e.target.value)} /></div>
+                              <div className="col-span-2"><Input className="h-8 text-xs" type="number" placeholder="Кол-во" value={work.quantity} onChange={(e) => updateWorkInStage(stageIdx, workIdx, 'quantity', parseFloat(e.target.value) || 0)} /></div>
+                              <div className="col-span-2"><Input className="h-8 text-xs" type="number" placeholder="Цена" value={work.unitPrice} onChange={(e) => updateWorkInStage(stageIdx, workIdx, 'unitPrice', parseFloat(e.target.value) || 0)} /></div>
+                              <div className="col-span-1"><Button type="button" variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => removeWorkFromStage(stageIdx, workIdx)}><X className="w-3 h-3" /></Button></div>
+                            </div>
+                          ))}
+                          <div className="flex justify-between text-xs pt-1 border-t">
+                            <span className="text-gray-500">Итого по этапу:</span>
+                            <span className="font-medium">{formatCurrency(stage.works.reduce((sum, w) => sum + w.quantity * w.unitPrice, 0))}</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                
+                {stages.length > 0 && (
+                  <div className="p-3 bg-blue-50 rounded-lg flex justify-between text-sm">
+                    <span className="font-medium">Итого по всем этапам:</span>
+                    <span className="font-bold">{formatCurrency(stages.reduce((sum, s) => sum + s.works.reduce((ws, w) => ws + w.quantity * w.unitPrice, 0), 0))}</span>
+                  </div>
+                )}
+              </div>
             </>
           )}
           
@@ -859,16 +1008,42 @@ function DashboardSection() {
 }
 
 // ==================== НАПРАВЛЕНИЯ ====================
+type DirectionType = {
+  id: string
+  name: string
+  code: string
+  description?: string
+  color: string
+  _count?: { workPlans: number }
+}
+
 function DirectionsSection() {
   const { directions, setDirections } = useAppStore()
   const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [editDirection, setEditDirection] = useState<DirectionType | null>(null)
+  const [deleteDirection, setDeleteDirection] = useState<DirectionType | null>(null)
 
   const fetchData = () => {
     fetch('/api/directions').then(res => res.json()).then(data => { setDirections(data); setLoading(false) })
   }
 
   useEffect(() => { fetchData() }, [])
+
+  const handleDelete = async (dir: DirectionType) => {
+    const plansCount = dir._count?.workPlans || 0
+    if (!confirm(`Удалить направление "${dir.name}"?${plansCount > 0 ? `\n\nВнимание! К этому направлению привязано ${plansCount} проект(ов). Они также будут удалены.` : ''}`)) return
+    
+    const res = await fetch(`/api/directions/${dir.id}`, { method: 'DELETE' })
+    if (res.ok) {
+      toast.success('Направление удалено')
+      fetchData()
+    } else {
+      const error = await res.json()
+      toast.error(error.error || 'Ошибка удаления')
+    }
+    setDeleteDirection(null)
+  }
 
   if (loading) return <div className="p-6">Загрузка...</div>
 
@@ -897,7 +1072,14 @@ function DirectionsSection() {
               <p className="text-sm text-gray-500 mb-4">{d.description || 'Нет описания'}</p>
               <div className="flex items-center justify-between text-sm">
                 <span className="text-gray-500">{d._count?.workPlans || 0} проектов</span>
-                <Button variant="ghost" size="sm"><Edit className="w-4 h-4" /></Button>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setEditDirection(d)}>
+                    <Edit className="w-4 h-4 mr-1" />Изменить
+                  </Button>
+                  <Button variant="outline" size="sm" className="text-red-600 hover:text-red-700 hover:bg-red-50" onClick={() => setDeleteDirection(d)}>
+                    <Trash2 className="w-4 h-4 mr-1" />Удалить
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -905,21 +1087,117 @@ function DirectionsSection() {
       </div>
 
       <CreateDialog type="direction" open={dialogOpen} onOpenChange={setDialogOpen} onSuccess={fetchData} />
+
+      {/* Диалог редактирования направления */}
+      <Dialog open={!!editDirection} onOpenChange={() => setEditDirection(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Редактирование направления</DialogTitle></DialogHeader>
+          {editDirection && (
+            <EditDirectionForm direction={editDirection} onClose={() => setEditDirection(null)} onSuccess={fetchData} />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Диалог подтверждения удаления */}
+      <Dialog open={!!deleteDirection} onOpenChange={() => setDeleteDirection(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Подтверждение удаления</DialogTitle></DialogHeader>
+          {deleteDirection && (
+            <div className="space-y-4">
+              <p>Вы уверены, что хотите удалить направление <strong>"{deleteDirection.name}"</strong>?</p>
+              {(deleteDirection._count?.workPlans || 0) > 0 && (
+                <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-800 text-sm">
+                  ⚠️ К этому направлению привязано {deleteDirection._count?.workPlans} проект(ов). Они также будут удалены!
+                </div>
+              )}
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setDeleteDirection(null)}>Отмена</Button>
+                <Button variant="destructive" onClick={() => handleDelete(deleteDirection)}>Удалить</Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
+// Форма редактирования направления
+function EditDirectionForm({ direction, onClose, onSuccess }: { direction: DirectionType; onClose: () => void; onSuccess: () => void }) {
+  const [name, setName] = useState(direction.name)
+  const [code, setCode] = useState(direction.code)
+  const [description, setDescription] = useState(direction.description || '')
+  const [color, setColor] = useState(direction.color)
+  const [loading, setLoading] = useState(false)
+
+  const handleSave = async () => {
+    setLoading(true)
+    const res = await fetch(`/api/directions/${direction.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, code, description, color }),
+    })
+    setLoading(false)
+    if (res.ok) {
+      toast.success('Направление обновлено')
+      onSuccess()
+      onClose()
+    } else {
+      toast.error('Ошибка обновления')
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div><Label>Название</Label><Input value={name} onChange={(e) => setName(e.target.value)} /></div>
+      <div><Label>Код</Label><Input value={code} onChange={(e) => setCode(e.target.value)} /></div>
+      <div><Label>Описание</Label><Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} /></div>
+      <div><Label>Цвет</Label><Input type="color" value={color} onChange={(e) => setColor(e.target.value)} className="h-10" /></div>
+      <DialogFooter>
+        <Button variant="outline" onClick={onClose}>Отмена</Button>
+        <Button onClick={handleSave} disabled={loading}>{loading ? 'Сохранение...' : 'Сохранить'}</Button>
+      </DialogFooter>
     </div>
   )
 }
 
 // ==================== ОБЪЕКТЫ ====================
+type BuildingType = {
+  id: string
+  name: string
+  address?: string
+  floors: number
+  status: string
+  _count?: { workPlans: number }
+}
+
 function BuildingsSection() {
   const { buildings, setBuildings } = useAppStore()
   const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [editBuilding, setEditBuilding] = useState<BuildingType | null>(null)
+  const [deleteBuilding, setDeleteBuilding] = useState<BuildingType | null>(null)
 
   const fetchData = () => {
     fetch('/api/buildings').then(res => res.json()).then(data => { setBuildings(data); setLoading(false) })
   }
 
   useEffect(() => { fetchData() }, [])
+
+  const handleDelete = async (bld: BuildingType) => {
+    const plansCount = bld._count?.workPlans || 0
+    if (!confirm(`Удалить объект "${bld.name}"?${plansCount > 0 ? `\n\nВнимание! К этому объекту привязано ${plansCount} проект(ов). Они также будут удалены.` : ''}`)) return
+    
+    const res = await fetch(`/api/buildings/${bld.id}`, { method: 'DELETE' })
+    if (res.ok) {
+      toast.success('Объект удален')
+      fetchData()
+    } else {
+      const error = await res.json()
+      toast.error(error.error || 'Ошибка удаления')
+    }
+    setDeleteBuilding(null)
+  }
 
   if (loading) return <div className="p-6">Загрузка...</div>
 
@@ -947,9 +1225,12 @@ function BuildingsSection() {
                 <div className="flex justify-between"><span className="text-gray-500">Адрес:</span><span>{b.address || '-'}</span></div>
                 <div className="flex justify-between"><span className="text-gray-500">Этажей:</span><span>{b.floors}</span></div>
               </div>
-              <div className="mt-4 pt-4 border-t flex justify-between">
+              <div className="mt-4 pt-4 border-t flex items-center justify-between">
                 <span className="text-sm text-gray-500">{b._count?.workPlans || 0} проектов</span>
-                <Button variant="ghost" size="sm"><Edit className="w-4 h-4" /></Button>
+                <div className="flex gap-1">
+                  <Button variant="ghost" size="sm" onClick={() => setEditBuilding(b)} title="Редактировать"><Edit className="w-4 h-4" /></Button>
+                  <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700" onClick={() => setDeleteBuilding(b)} title="Удалить"><X className="w-4 h-4" /></Button>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -957,13 +1238,93 @@ function BuildingsSection() {
       </div>
 
       <CreateDialog type="building" open={dialogOpen} onOpenChange={setDialogOpen} onSuccess={fetchData} />
+
+      {/* Диалог редактирования объекта */}
+      <Dialog open={!!editBuilding} onOpenChange={() => setEditBuilding(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Редактирование объекта</DialogTitle></DialogHeader>
+          {editBuilding && (
+            <EditBuildingForm building={editBuilding} onClose={() => setEditBuilding(null)} onSuccess={fetchData} />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Диалог подтверждения удаления */}
+      <Dialog open={!!deleteBuilding} onOpenChange={() => setDeleteBuilding(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Подтверждение удаления</DialogTitle></DialogHeader>
+          {deleteBuilding && (
+            <div className="space-y-4">
+              <p>Вы уверены, что хотите удалить объект <strong>"{deleteBuilding.name}"</strong>?</p>
+              {(deleteBuilding._count?.workPlans || 0) > 0 && (
+                <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-800 text-sm">
+                  ⚠️ К этому объекту привязано {deleteBuilding._count?.workPlans} проект(ов). Они также будут удалены!
+                </div>
+              )}
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setDeleteBuilding(null)}>Отмена</Button>
+                <Button variant="destructive" onClick={() => handleDelete(deleteBuilding)}>Удалить</Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
+// Форма редактирования объекта
+function EditBuildingForm({ building, onClose, onSuccess }: { building: BuildingType; onClose: () => void; onSuccess: () => void }) {
+  const [name, setName] = useState(building.name)
+  const [address, setAddress] = useState(building.address || '')
+  const [floors, setFloors] = useState(building.floors)
+  const [status, setStatus] = useState(building.status)
+  const [loading, setLoading] = useState(false)
+
+  const handleSave = async () => {
+    setLoading(true)
+    const res = await fetch(`/api/buildings/${building.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, address, floors, status }),
+    })
+    setLoading(false)
+    if (res.ok) {
+      toast.success('Объект обновлен')
+      onSuccess()
+      onClose()
+    } else {
+      toast.error('Ошибка обновления')
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div><Label>Название</Label><Input value={name} onChange={(e) => setName(e.target.value)} /></div>
+      <div><Label>Адрес</Label><Input value={address} onChange={(e) => setAddress(e.target.value)} /></div>
+      <div><Label>Этажей</Label><Input type="number" value={floors} onChange={(e) => setFloors(parseInt(e.target.value) || 1)} /></div>
+      <div><Label>Статус</Label>
+        <Select value={status} onValueChange={setStatus}>
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ACTIVE">Строится</SelectItem>
+            <SelectItem value="COMPLETED">Сдан</SelectItem>
+            <SelectItem value="PLANNED">Планируется</SelectItem>
+            <SelectItem value="SUSPENDED">Приостановлен</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <DialogFooter>
+        <Button variant="outline" onClick={onClose}>Отмена</Button>
+        <Button onClick={handleSave} disabled={loading}>{loading ? 'Сохранение...' : 'Сохранить'}</Button>
+      </DialogFooter>
     </div>
   )
 }
 
 // ==================== ПЛАН РАБОТ ====================
 function PlansSection() {
-  const { workPlans, setWorkPlans, directions, setDirections, buildings, setBuildings } = useAppStore()
+  const { workPlans, setWorkPlans, directions, setDirections, buildings, setBuildings, orders, setOrders } = useAppStore()
   const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [filterStatus, setFilterStatus] = useState('all')
@@ -976,10 +1337,12 @@ function PlansSection() {
       fetch('/api/plans').then(r => r.json()),
       fetch('/api/directions').then(r => r.json()),
       fetch('/api/buildings').then(r => r.json()),
-    ]).then(([plans, dirs, builds]) => {
+      fetch('/api/orders').then(r => r.json()),
+    ]).then(([plans, dirs, builds, ords]) => {
       setWorkPlans(plans)
       setDirections(dirs)
       setBuildings(builds)
+      setOrders(ords)
       setLoading(false)
     })
   }
@@ -1088,7 +1451,7 @@ function PlansSection() {
         open={dialogOpen} 
         onOpenChange={setDialogOpen} 
         onSuccess={fetchData}
-        data={{ directions, buildings }}
+        data={{ directions, buildings, orders }}
       />
 
       {/* Диалог просмотра плана */}
@@ -1135,6 +1498,17 @@ function PlansSection() {
 }
 
 // Форма редактирования плана работ
+type EditStageType = {
+  id?: string
+  name: string
+  description?: string
+  startDate?: string | null
+  endDate?: string | null
+  plannedAmount?: number
+  status?: string
+  works: { id?: string; name: string; unit: string; quantity: number; unitPrice: number }[]
+}
+
 function EditPlanForm({ plan, onClose, onSuccess, directions, buildings }: { plan: WorkPlan; onClose: () => void; onSuccess: () => void; directions: unknown[]; buildings: unknown[] }) {
   const [name, setName] = useState(plan.name)
   const [contractNumber, setContractNumber] = useState(plan.contractNumber || '')
@@ -1142,13 +1516,76 @@ function EditPlanForm({ plan, onClose, onSuccess, directions, buildings }: { pla
   const [status, setStatus] = useState(plan.status)
   const [notes, setNotes] = useState(plan.notes || '')
   const [loading, setLoading] = useState(false)
+  const [stages, setStages] = useState<EditStageType[]>(
+    (plan.stages || []).map(s => ({
+      id: s.id,
+      name: s.name,
+      description: s.description || '',
+      startDate: s.startDate ? new Date(s.startDate).toISOString().split('T')[0] : null,
+      endDate: s.endDate ? new Date(s.endDate).toISOString().split('T')[0] : null,
+      plannedAmount: s.plannedAmount || 0,
+      status: s.status,
+      works: (s.works || []).map((w: { id?: string; name: string; unit: string; quantity: number; unitPrice: number }) => ({
+        id: w.id,
+        name: w.name,
+        unit: w.unit || 'шт',
+        quantity: w.quantity || 1,
+        unitPrice: w.unitPrice || 0
+      }))
+    }))
+  )
+
+  // Добавить этап
+  const addStage = () => {
+    setStages([...stages, { name: '', works: [] }])
+  }
+
+  // Удалить этап
+  const removeStage = (idx: number) => {
+    setStages(stages.filter((_, i) => i !== idx))
+  }
+
+  // Обновить этап
+  const updateStage = (idx: number, field: string, value: string | number) => {
+    const newStages = [...stages]
+    newStages[idx] = { ...newStages[idx], [field]: value }
+    setStages(newStages)
+  }
+
+  // Добавить работу в этап
+  const addWorkToStage = (stageIdx: number) => {
+    const newStages = [...stages]
+    newStages[stageIdx].works.push({ name: '', unit: 'шт', quantity: 1, unitPrice: 0 })
+    setStages(newStages)
+  }
+
+  // Удалить работу из этапа
+  const removeWorkFromStage = (stageIdx: number, workIdx: number) => {
+    const newStages = [...stages]
+    newStages[stageIdx].works = newStages[stageIdx].works.filter((_, i) => i !== workIdx)
+    setStages(newStages)
+  }
+
+  // Обновить работу в этапе
+  const updateWorkInStage = (stageIdx: number, workIdx: number, field: string, value: string | number) => {
+    const newStages = [...stages]
+    newStages[stageIdx].works[workIdx] = { ...newStages[stageIdx].works[workIdx], [field]: value }
+    setStages(newStages)
+  }
 
   const handleSave = async () => {
     setLoading(true)
     const res = await fetch(`/api/plans/${plan.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, contractNumber, totalAmount: Number(totalAmount), status, notes }),
+      body: JSON.stringify({ 
+        name, 
+        contractNumber, 
+        totalAmount: Number(totalAmount), 
+        status, 
+        notes,
+        stages: stages.filter(s => s.name)
+      }),
     })
     setLoading(false)
     if (res.ok) {
@@ -1178,6 +1615,77 @@ function EditPlanForm({ plan, onClose, onSuccess, directions, buildings }: { pla
         </Select>
       </div>
       <div><Label>Примечания</Label><Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} /></div>
+      
+      {/* Этапы и состав работ */}
+      <div className="border-t pt-4">
+        <div className="flex items-center justify-between mb-3">
+          <Label className="text-base font-semibold">Этапы и состав работ</Label>
+          <Button type="button" variant="outline" size="sm" onClick={addStage}><Plus className="w-4 h-4 mr-1" />Добавить этап</Button>
+        </div>
+        
+        {stages.length === 0 && (
+          <p className="text-sm text-gray-500 text-center py-4 bg-gray-50 rounded-lg">
+            Нажмите "Добавить этап" для создания структуры работ
+          </p>
+        )}
+        
+        {stages.map((stage, stageIdx) => (
+          <div key={stageIdx} className="border rounded-lg p-4 mb-4 bg-gray-50">
+            <div className="flex items-center justify-between mb-3">
+              <span className="font-medium text-sm">Этап {stageIdx + 1}</span>
+              <Button type="button" variant="ghost" size="sm" className="text-red-600" onClick={() => removeStage(stageIdx)}><X className="w-4 h-4" /></Button>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <div><Label className="text-xs">Название этапа</Label><Input value={stage.name} onChange={(e) => updateStage(stageIdx, 'name', e.target.value)} placeholder="Название этапа" /></div>
+              <div><Label className="text-xs">Сумма этапа (₽)</Label><Input type="number" value={stage.plannedAmount || ''} onChange={(e) => updateStage(stageIdx, 'plannedAmount', parseFloat(e.target.value) || 0)} placeholder="0" /></div>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <div><Label className="text-xs">Начало</Label><Input type="date" value={stage.startDate || ''} onChange={(e) => updateStage(stageIdx, 'startDate', e.target.value)} /></div>
+              <div><Label className="text-xs">Окончание</Label><Input type="date" value={stage.endDate || ''} onChange={(e) => updateStage(stageIdx, 'endDate', e.target.value)} /></div>
+            </div>
+            
+            {/* Состав работ этапа */}
+            <div className="border-t pt-3">
+              <div className="flex items-center justify-between mb-2">
+                <Label className="text-xs font-medium">Состав работ этапа</Label>
+                <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={() => addWorkToStage(stageIdx)}><Plus className="w-3 h-3 mr-1" />Добавить</Button>
+              </div>
+              
+              {stage.works.length === 0 && (
+                <p className="text-xs text-gray-400 text-center py-2">Нет работ</p>
+              )}
+              
+              {stage.works.length > 0 && (
+                <div className="space-y-2">
+                  {stage.works.map((work, workIdx) => (
+                    <div key={workIdx} className="grid grid-cols-12 gap-1 items-end">
+                      <div className="col-span-5"><Input className="h-8 text-xs" placeholder="Наименование" value={work.name} onChange={(e) => updateWorkInStage(stageIdx, workIdx, 'name', e.target.value)} /></div>
+                      <div className="col-span-2"><Input className="h-8 text-xs" placeholder="Ед." value={work.unit} onChange={(e) => updateWorkInStage(stageIdx, workIdx, 'unit', e.target.value)} /></div>
+                      <div className="col-span-2"><Input className="h-8 text-xs" type="number" placeholder="Кол-во" value={work.quantity} onChange={(e) => updateWorkInStage(stageIdx, workIdx, 'quantity', parseFloat(e.target.value) || 0)} /></div>
+                      <div className="col-span-2"><Input className="h-8 text-xs" type="number" placeholder="Цена" value={work.unitPrice} onChange={(e) => updateWorkInStage(stageIdx, workIdx, 'unitPrice', parseFloat(e.target.value) || 0)} /></div>
+                      <div className="col-span-1"><Button type="button" variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => removeWorkFromStage(stageIdx, workIdx)}><X className="w-3 h-3" /></Button></div>
+                    </div>
+                  ))}
+                  <div className="flex justify-between text-xs pt-1 border-t">
+                    <span className="text-gray-500">Итого по этапу:</span>
+                    <span className="font-medium">{formatCurrency(stage.works.reduce((sum, w) => sum + w.quantity * w.unitPrice, 0))}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+        
+        {stages.length > 0 && (
+          <div className="p-3 bg-blue-50 rounded-lg flex justify-between text-sm">
+            <span className="font-medium">Итого по всем этапам:</span>
+            <span className="font-bold">{formatCurrency(stages.reduce((sum, s) => sum + s.works.reduce((ws, w) => ws + w.quantity * w.unitPrice, 0), 0))}</span>
+          </div>
+        )}
+      </div>
+      
       <DialogFooter>
         <Button variant="outline" onClick={onClose}>Отмена</Button>
         <Button onClick={handleSave} disabled={loading}>{loading ? 'Сохранение...' : 'Сохранить'}</Button>
@@ -3519,6 +4027,12 @@ function SettingsSection() {
   const user = useAppStore((s) => s.user)
   const [backingUp, setBackingUp] = useState(false)
   const [reloading, setReloading] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [dbStats, setDbStats] = useState<{ counts: Record<string, number>; total: number } | null>(null)
+
+  useEffect(() => {
+    fetch('/api/settings/database').then(r => r.json()).then(setDbStats).catch(console.error)
+  }, [])
 
   const handleBackup = async () => {
     setBackingUp(true)
@@ -3555,6 +4069,51 @@ function SettingsSection() {
     }
   }
 
+  const handleClearDb = async () => {
+    if (!confirm('Очистить базу данных? Все данные будут удалены!')) return
+    if (!confirm('Вы уверены? Это действие нельзя отменить!')) return
+    setLoading(true)
+    try {
+      const res = await fetch('/api/settings/database', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'clear' })
+      })
+      if (res.ok) {
+        toast.success('База данных очищена')
+        const stats = await fetch('/api/settings/database').then(r => r.json())
+        setDbStats(stats)
+      } else {
+        toast.error('Ошибка очистки')
+      }
+    } catch (error) {
+      toast.error('Ошибка очистки')
+    }
+    setLoading(false)
+  }
+
+  const handleLoadDemo = async () => {
+    if (!confirm('Загрузить демо-данные? Текущие данные будут заменены!')) return
+    setLoading(true)
+    try {
+      const res = await fetch('/api/settings/database', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'demo' })
+      })
+      if (res.ok) {
+        toast.success('Демо-данные загружены')
+        const stats = await fetch('/api/settings/database').then(r => r.json())
+        setDbStats(stats)
+      } else {
+        toast.error('Ошибка загрузки демо-данных')
+      }
+    } catch (error) {
+      toast.error('Ошибка загрузки демо-данных')
+    }
+    setLoading(false)
+  }
+
   return (
     <div className="p-6 space-y-6">
       <h1 className="text-2xl font-bold">Настройки</h1>
@@ -3582,24 +4141,75 @@ function SettingsSection() {
         </Card>
 
         <Card>
+          <CardHeader><CardTitle>База данных</CardTitle></CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+              <div><p className="font-medium">Тип БД</p><p className="text-sm text-gray-500">SQLite</p></div>
+              <Badge className="bg-green-100 text-green-800">Подключена</Badge>
+            </div>
+            
+            {dbStats && (
+              <div className="p-4 bg-blue-50 rounded-lg">
+                <p className="font-medium mb-2">Статистика данных</p>
+                <div className="grid grid-cols-3 gap-2 text-sm">
+                  <div className="text-center p-2 bg-white rounded">
+                    <p className="text-lg font-bold">{dbStats.counts.directions}</p>
+                    <p className="text-gray-500">Направлений</p>
+                  </div>
+                  <div className="text-center p-2 bg-white rounded">
+                    <p className="text-lg font-bold">{dbStats.counts.buildings}</p>
+                    <p className="text-gray-500">Объектов</p>
+                  </div>
+                  <div className="text-center p-2 bg-white rounded">
+                    <p className="text-lg font-bold">{dbStats.counts.plans}</p>
+                    <p className="text-gray-500">Планов</p>
+                  </div>
+                  <div className="text-center p-2 bg-white rounded">
+                    <p className="text-lg font-bold">{dbStats.counts.employees}</p>
+                    <p className="text-gray-500">Сотрудников</p>
+                  </div>
+                  <div className="text-center p-2 bg-white rounded">
+                    <p className="text-lg font-bold">{dbStats.counts.orders}</p>
+                    <p className="text-gray-500">Нарядов</p>
+                  </div>
+                  <div className="text-center p-2 bg-white rounded">
+                    <p className="text-lg font-bold">{dbStats.total}</p>
+                    <p className="text-gray-500">Всего</p>
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            <div className="space-y-2">
+              <div className="grid grid-cols-2 gap-2">
+                <Button variant="outline" onClick={handleLoadDemo} disabled={loading}>
+                  <Database className="w-4 h-4 mr-2" />
+                  Загрузить демо
+                </Button>
+                <Button variant="outline" className="text-red-600 hover:text-red-700" onClick={handleClearDb} disabled={loading}>
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Очистить базу
+                </Button>
+              </div>
+              <Button variant="outline" className="w-full" onClick={handleBackup} disabled={backingUp}>
+                <Download className="w-4 h-4 mr-2" />
+                {backingUp ? 'Создание бэкапа...' : 'Скачать бэкап базы'}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
           <CardHeader><CardTitle>Система</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
               <div><p className="font-medium">Версия</p><p className="text-sm text-gray-500">1.0.0</p></div>
             </div>
             <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-              <div><p className="font-medium">База данных</p><p className="text-sm text-gray-500">SQLite</p></div>
-              <Badge className="bg-green-100 text-green-800">Подключена</Badge>
-            </div>
-            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
               <div><p className="font-medium">PWA</p><p className="text-sm text-gray-500">Мобильное приложение</p></div>
               <Badge className="bg-blue-100 text-blue-800">Активно</Badge>
             </div>
-            <div className="pt-4 space-y-2">
-              <Button variant="outline" className="w-full" onClick={handleBackup} disabled={backingUp}>
-                <Download className="w-4 h-4 mr-2" />
-                {backingUp ? 'Создание бэкапа...' : 'Создать бэкап базы данных'}
-              </Button>
+            <div className="pt-4">
               <Button variant="outline" className="w-full text-orange-600 hover:text-orange-700" onClick={handleReload} disabled={reloading}>
                 <Settings className="w-4 h-4 mr-2" />
                 {reloading ? 'Перезагрузка...' : 'Перезагрузить приложение'}
