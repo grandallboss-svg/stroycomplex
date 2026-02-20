@@ -59,7 +59,7 @@ COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
 RUN bun add @prisma/client@6.19.2
 
 # Создание директорий для базы данных
-RUN mkdir -p /app/data/backups
+RUN mkdir -p /app/data/backups /app/data/templates
 
 # Копируем базы данных-шаблоны
 COPY --from=builder /app/db/empty.db /app/data/templates/empty.db
