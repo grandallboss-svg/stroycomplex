@@ -1,0 +1,518 @@
+// Система управления строительными проектами
+// Управление подрядами на монтаж сетей связи, АСПЗ, вентиляции
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// ПОЛЬЗОВАТЕЛИ И РОЛИ
+// ============================================
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String
+  phone     String?
+  role      UserRole @default(WORKER)
+  position  String?
+  avatar    String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Связи
+  createdOrders InstallationOrder[] @relation("OrderCreator")
+
+  @@map("users")
+}
+
+enum UserRole {
+  ADMIN      // Администратор
+  MANAGER    // Менеджер проекта
+  FOREMAN    // Прораб
+  WORKER     // Рабочий
+  ACCOUNTANT // Бухгалтер
+}
+
+// ============================================
+// НАПРАВЛЕНИЯ РАБОТ
+// ============================================
+
+model WorkDirection {
+  id          String     @id @default(cuid())
+  name        String
+  code        String     @unique // СС - сети связи, АСПЗ, АВ - автоматизация вентиляции
+  description String?
+  color       String     @default("#3B82F6")
+  icon        String?
+  isActive    Boolean    @default(true)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  // Связи
+  workPlans      WorkPlan[]
+  schemes        InstallationScheme[]
+  safetyBriefings SafetyBriefing[]
+
+  @@map("work_directions")
+}
+
+// ============================================
+// ОБЪЕКТЫ (ЗДАНИЯ/КОРПУСА)
+// ============================================
+
+model Building {
+  id          String         @id @default(cuid())
+  name        String         // Корпус 1, Корпус 2 и т.д.
+  address     String?
+  floors      Int            @default(1)
+  totalArea   Float?
+  status      BuildingStatus @default(ACTIVE)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  // Связи
+  workPlans WorkPlan[]
+  schemes   InstallationScheme[]
+
+  @@map("buildings")
+}
+
+enum BuildingStatus {
+  ACTIVE     // Строительство ведется
+  COMPLETED  // Сдан
+  PLANNED    // Планируется
+  SUSPENDED  // Приостановлен
+}
+
+// ============================================
+// ПЛАН РАБОТ
+// ============================================
+
+model WorkPlan {
+  id              String          @id @default(cuid())
+  name            String
+  contractNumber  String?
+  workDirectionId String
+  buildingId      String
+  startDate       DateTime
+  endDate         DateTime
+  totalAmount     Float           @default(0)
+  vatRate         Float           @default(20)
+  status          WorkPlanStatus  @default(DRAFT)
+  notes           String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  // Связи
+  workDirection   WorkDirection   @relation(fields: [workDirectionId], references: [id])
+  building        Building        @relation(fields: [buildingId], references: [id])
+  stages          WorkStage[]
+  documentsKS2    DocumentKS2[]
+  documentsKS3    DocumentKS3[]
+  hiddenWorkActs  HiddenWorkAct[]
+  assignments     WorkAssignment[]
+  orders          InstallationOrder[]
+
+  @@map("work_plans")
+}
+
+enum WorkPlanStatus {
+  DRAFT       // Черновик
+  APPROVED    // Согласован
+  IN_PROGRESS // В работе
+  COMPLETED   // Завершен
+  CANCELLED   // Отменен
+}
+
+// ============================================
+// ЭТАПЫ РАБОТ
+// ============================================
+
+model WorkStage {
+  id             String           @id @default(cuid())
+  workPlanId     String
+  name           String
+  description    String?
+  order          Int              @default(0)
+  startDate      DateTime?
+  endDate        DateTime?
+  plannedAmount  Float            @default(0)
+  actualAmount   Float            @default(0)
+  percentComplete Float           @default(0)
+  status         WorkStageStatus  @default(PENDING)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  // Связи
+  workPlan       WorkPlan         @relation(fields: [workPlanId], references: [id], onDelete: Cascade)
+  hiddenWorkActs HiddenWorkAct[]
+  assignments    WorkAssignment[]
+  orders         InstallationOrder[]
+
+  @@map("work_stages")
+}
+
+enum WorkStageStatus {
+  PENDING     // Ожидает
+  IN_PROGRESS // В работе
+  COMPLETED   // Завершен
+  DELAYED     // Задержан
+  CANCELLED   // Отменен
+}
+
+// ============================================
+// ДОКУМЕНТЫ КС-2 (Акт приемки выполненных работ)
+// ============================================
+
+model DocumentKS2 {
+  id              String          @id @default(cuid())
+  number          String          @unique // Номер документа
+  workPlanId      String?
+  period          DateTime        // Отчетный период
+  totalAmount     Float           @default(0)
+  vatAmount       Float           @default(0)
+  totalWithVat    Float           @default(0)
+  status          DocumentStatus  @default(DRAFT)
+  notes           String?
+  createdById     String?
+  signedById      String?
+  signedAt        DateTime?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  // Связи
+  workPlan        WorkPlan?       @relation(fields: [workPlanId], references: [id])
+  items           DocumentKS2Item[]
+  documentsKS3    DocumentKS3[]
+
+  @@map("documents_ks2")
+}
+
+model DocumentKS2Item {
+  id            String   @id @default(cuid())
+  documentKS2Id String
+  lineNumber    Int
+  name          String   // Наименование работы
+  unit          String   // Ед. измерения
+  quantity      Float    // Количество
+  unitPrice     Float    // Цена за единицу
+  totalAmount   Float    // Сумма
+
+  // Связи
+  documentKS2   DocumentKS2 @relation(fields: [documentKS2Id], references: [id], onDelete: Cascade)
+
+  @@map("documents_ks2_items")
+}
+
+// ============================================
+// ДОКУМЕНТЫ КС-3 (Справка о стоимости выполненных работ)
+// ============================================
+
+model DocumentKS3 {
+  id              String          @id @default(cuid())
+  number          String          @unique
+  workPlanId      String
+  ks2Id           String
+  period          DateTime
+  totalAmount     Float           @default(0)
+  vatAmount       Float           @default(0)
+  totalWithVat    Float           @default(0)
+  previousTotal   Float           @default(0) // Нарастающим итогом предыдущий
+  currentTotal    Float           @default(0) // За текущий период
+  status          DocumentStatus  @default(DRAFT)
+  notes           String?
+  createdById     String?
+  signedById      String?
+  signedAt        DateTime?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  // Связи
+  workPlan        WorkPlan        @relation(fields: [workPlanId], references: [id])
+  documentKS2     DocumentKS2     @relation(fields: [ks2Id], references: [id])
+
+  @@map("documents_ks3")
+}
+
+enum DocumentStatus {
+  DRAFT    // Черновик
+  SIGNED   // Подписан
+  APPROVED // Утвержден
+}
+
+// ============================================
+// АКТЫ СКРЫТЫХ РАБОТ
+// ============================================
+
+model HiddenWorkAct {
+  id             String             @id @default(cuid())
+  number         String             @unique
+  workPlanId     String
+  workStageId    String?
+  name           String
+  description    String
+  location       String?            // Место проведения работ
+  executedAt     DateTime           // Дата выполнения работ
+  signedAt       DateTime?          // Дата подписания
+  status         HiddenWorkActStatus @default(DRAFT)
+  // Подписанты
+  contractorName String?
+  contractorPosition String?
+  customerName   String?
+  customerPosition String?
+  supervisionName String?
+  supervisionPosition String?
+  notes          String?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  // Связи
+  workPlan       WorkPlan           @relation(fields: [workPlanId], references: [id])
+  workStage      WorkStage?         @relation(fields: [workStageId], references: [id])
+
+  @@map("hidden_work_acts")
+}
+
+enum HiddenWorkActStatus {
+  DRAFT    // Черновик
+  SIGNED   // Подписан
+  APPROVED // Утвержден заказчиком
+}
+
+// ============================================
+// ПЕРСОНАЛ
+// ============================================
+
+model Employee {
+  id             String          @id @default(cuid())
+  fullName       String
+  shortName      String?         // Иванов И.И.
+  phone          String?
+  email          String?
+  position       String?         // Должность
+  specialty      String?         // Специальность
+  hourlyRate     Float           @default(0)
+  monthlySalary  Float           @default(0)
+  hireDate       DateTime?
+  fireDate       DateTime?
+  status         EmployeeStatus  @default(ACTIVE)
+  notes          String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  // Связи
+  workAssignments WorkAssignment[]
+  salaryPayments  SalaryPayment[]
+  safetyRecords   SafetyRecord[]
+  orderAssignments OrderAssignee[]
+
+  @@map("employees")
+}
+
+enum EmployeeStatus {
+  ACTIVE   // Работает
+  FIRED    // Уволен
+  VACATION // В отпуске
+  SICK     // На больничном
+}
+
+// ============================================
+// НАЗНАЧЕНИЯ НА РАБОТЫ
+// ============================================
+
+model WorkAssignment {
+  id           String   @id @default(cuid())
+  employeeId   String
+  workPlanId   String
+  workStageId  String?
+  assignedAt   DateTime @default(now())
+  completedAt  DateTime?
+  hoursWorked  Float    @default(0)
+  dailyRate    Float    @default(0)
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Связи
+  employee     Employee  @relation(fields: [employeeId], references: [id])
+  workPlan     WorkPlan  @relation(fields: [workPlanId], references: [id])
+  workStage    WorkStage? @relation(fields: [workStageId], references: [id])
+
+  @@map("work_assignments")
+}
+
+// ============================================
+// ЗАРПЛАТА
+// ============================================
+
+model SalaryPayment {
+  id           String           @id @default(cuid())
+  employeeId   String
+  period       DateTime         // Месяц начисления
+  workDays     Int              @default(0)
+  hoursWorked  Float            @default(0)
+  baseAmount   Float            @default(0)  // Базовая сумма
+  bonus        Float            @default(0)  // Премия
+  deductions   Float            @default(0)  // Удержания
+  tax          Float            @default(0)  // НДФЛ
+  total        Float            @default(0)  // К выплате
+  status       PaymentStatus    @default(PENDING)
+  paidAt       DateTime?
+  notes        String?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  // Связи
+  employee     Employee         @relation(fields: [employeeId], references: [id])
+
+  @@map("salary_payments")
+}
+
+enum PaymentStatus {
+  PENDING  // К выплате
+  PAID     // Выплачено
+  CANCELLED // Отменено
+}
+
+// ============================================
+// НАРЯДЫ НА МОНТАЖ
+// ============================================
+
+model InstallationOrder {
+  id             String               @id @default(cuid())
+  number         String               @unique
+  workPlanId     String?
+  workStageId    String?
+  name           String
+  description    String?
+  location       String?
+  deadline       DateTime?
+  status         InstallationOrderStatus @default(DRAFT)
+  priority       Int                  @default(1) // 1-низкий, 2-средний, 3-высокий
+  notes          String?
+  createdById    String?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  completedAt    DateTime?
+  startedAt      DateTime?            // Время начала работы
+  pausedAt       DateTime?            // Время последней паузы
+  totalTimeMinutes Int                @default(0) // Общее время работы в минутах
+
+  // Связи
+  workPlan       WorkPlan?            @relation(fields: [workPlanId], references: [id])
+  workStage      WorkStage?           @relation(fields: [workStageId], references: [id])
+  createdBy      User?                @relation("OrderCreator", fields: [createdById], references: [id])
+  assignees      OrderAssignee[]
+  items          OrderItem[]
+
+  @@map("installation_orders")
+}
+
+model OrderAssignee {
+  id               String   @id @default(cuid())
+  orderId          String
+  employeeId       String
+  assignedAt       DateTime @default(now())
+  
+  // Связи
+  order            InstallationOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  employee         Employee @relation(fields: [employeeId], references: [id])
+
+  @@map("order_assignees")
+}
+
+model OrderItem {
+  id          String   @id @default(cuid())
+  orderId     String
+  name        String   // Наименование работы
+  unit        String   @default("шт") // Ед. измерения
+  quantity    Float    @default(1) // Количество
+  unitPrice   Float    @default(0) // Цена за единицу
+  notes       String?  // Примечания
+
+  // Связи
+  order       InstallationOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("order_items")
+}
+
+enum InstallationOrderStatus {
+  DRAFT      // Черновик
+  ASSIGNED   // Назначен
+  IN_PROGRESS // В работе
+  PAUSED     // На паузе
+  COMPLETED  // Выполнен
+  CANCELLED  // Отменен
+}
+
+// ============================================
+// СХЕМЫ МОНТАЖА
+// ============================================
+
+model InstallationScheme {
+  id              String   @id @default(cuid())
+  name            String
+  workDirectionId String?
+  buildingId      String?
+  floor           Int?
+  room            String?
+  description     String?
+  fileUrl         String?  // Путь к файлу схемы
+  fileType        String?  // Тип файла (pdf, dwg, jpg и т.д.)
+  fileSize        Int?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Связи
+  workDirection   WorkDirection? @relation(fields: [workDirectionId], references: [id])
+  building        Building? @relation(fields: [buildingId], references: [id])
+
+  @@map("installation_schemes")
+}
+
+// ============================================
+// ТЕХНИКА БЕЗОПАСНОСТИ
+// ============================================
+
+model SafetyBriefing {
+  id              String   @id @default(cuid())
+  name            String
+  description     String?
+  workDirectionId String?
+  required        Boolean  @default(true)
+  periodDays      Int?     // Периодичность в днях (если периодический)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Связи
+  workDirection   WorkDirection? @relation(fields: [workDirectionId], references: [id])
+  records         SafetyRecord[]
+
+  @@map("safety_briefings")
+}
+
+model SafetyRecord {
+  id            String   @id @default(cuid())
+  employeeId    String
+  briefingId    String
+  date          DateTime @default(now())
+  signatureData String?  // Данные подписи (base64 или ссылка)
+  result        String?  // Результат (прошел/не прошел)
+  notes         String?
+  nextDate      DateTime? // Дата следующего инструктажа
+  createdAt     DateTime @default(now())
+
+  // Связи
+  employee      Employee @relation(fields: [employeeId], references: [id])
+  briefing      SafetyBriefing @relation(fields: [briefingId], references: [id])
+
+  @@map("safety_records")
+}
