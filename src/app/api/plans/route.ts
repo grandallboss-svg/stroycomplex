@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
         buildingId: data.buildingId,
         startDate: new Date(data.startDate),
         endDate: new Date(data.endDate),
-        totalAmount: data.totalAmount || 0,
+        totalAmount: parseFloat(data.totalAmount) || 0,
         vatRate: data.vatRate || 20,
         status: data.status || 'DRAFT',
         notes: data.notes,

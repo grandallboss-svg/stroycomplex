@@ -29,6 +29,7 @@ model User {
 
   // Связи
   createdOrders InstallationOrder[] @relation("OrderCreator")
+  employee      Employee?
 
   @@map("users")
 }
@@ -324,6 +325,8 @@ model Employee {
   specialty      String?         // Специальность
   hourlyRate     Float           @default(0)
   monthlySalary  Float           @default(0)
+  userId         String?  @unique // Привязка к аккаунту
+  user           User?    @relation(fields: [userId], references: [id])
   hireDate       DateTime?
   fireDate       DateTime?
   status         EmployeeStatus  @default(ACTIVE)
@@ -472,6 +475,7 @@ enum InstallationOrderStatus {
   ASSIGNED   // Назначен
   IN_PROGRESS // В работе
   PAUSED     // На паузе
+  REVIEW     // Приемка
   COMPLETED  // Выполнен
   CANCELLED  // Отменен
 }

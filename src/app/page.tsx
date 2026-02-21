@@ -181,20 +181,21 @@ function Sidebar() {
     toast.success('Вы вышли из системы')
   }
 
-  const menuItems = [
-    { icon: LayoutDashboard, label: 'Дашборд', section: 'dashboard' },
-    { icon: Network, label: 'Направления', section: 'directions' },
-    { icon: Building2, label: 'Объекты', section: 'buildings' },
-    { icon: Briefcase, label: 'План работ', section: 'plans' },
-    { icon: FileSpreadsheet, label: 'КС-2', section: 'ks2' },
-    { icon: FileText, label: 'КС-3', section: 'ks3' },
-    { icon: FileCheck, label: 'Акты скрытых', section: 'hidden-acts' },
-    { icon: Users, label: 'Персонал', section: 'employees' },
-    { icon: DollarSign, label: 'Зарплата', section: 'salary', badge: pendingSalary },
-    { icon: ClipboardList, label: 'Наряды', section: 'orders', badge: activeOrders },
-    { icon: Shield, label: 'Техника безоп.', section: 'safety' },
-    { icon: Settings, label: 'Настройки', section: 'settings' },
+  const allMenuItems = [
+    { icon: LayoutDashboard, label: 'Дашборд', section: 'dashboard', roles: ['ADMIN', 'MANAGER', 'FOREMAN'] },
+    { icon: Network, label: 'Направления', section: 'directions', roles: ['ADMIN', 'MANAGER', 'FOREMAN'] },
+    { icon: Building2, label: 'Объекты', section: 'buildings', roles: ['ADMIN', 'MANAGER', 'FOREMAN'] },
+    { icon: Briefcase, label: 'План работ', section: 'plans', roles: ['ADMIN', 'MANAGER', 'FOREMAN'] },
+    { icon: FileSpreadsheet, label: 'КС-2', section: 'ks2', roles: ['ADMIN', 'MANAGER', 'FOREMAN'] },
+    { icon: FileText, label: 'КС-3', section: 'ks3', roles: ['ADMIN', 'MANAGER', 'FOREMAN'] },
+    { icon: FileCheck, label: 'Акты скрытых', section: 'hidden-acts', roles: ['ADMIN', 'MANAGER', 'FOREMAN'] },
+    { icon: Users, label: 'Персонал', section: 'employees', roles: ['ADMIN', 'MANAGER', 'FOREMAN'] },
+    { icon: DollarSign, label: 'Зарплата', section: 'salary', badge: pendingSalary, roles: ['ADMIN', 'MANAGER', 'FOREMAN', 'WORKER', 'ACCOUNTANT'] },
+    { icon: ClipboardList, label: 'Наряды', section: 'orders', badge: activeOrders, roles: ['ADMIN', 'MANAGER', 'FOREMAN', 'WORKER'] },
+    { icon: Shield, label: 'Техника безоп.', section: 'safety', roles: ['ADMIN', 'MANAGER', 'FOREMAN', 'WORKER'] },
+    { icon: Settings, label: 'Настройки', section: 'settings', roles: ['ADMIN', 'FOREMAN'] },
   ]
+  const menuItems = allMenuItems.filter(item => item.roles.includes(user?.role || ''))
 
   return (
     <aside className={`bg-white border-r flex flex-col transition-all duration-300 ${sidebarOpen ? 'w-64' : 'w-16'}`}>
@@ -3427,7 +3428,7 @@ function SalarySection() {
 
 // ==================== НАРЯДЫ ====================
 function OrdersSection() {
-  const { orders, setOrders, employees, setEmployees, workPlans, setWorkPlans } = useAppStore()
+  const { orders, setOrders, employees, setEmployees, workPlans, setWorkPlans, user } = useAppStore()
   const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editOrder, setEditOrder] = useState<typeof orders[0] | null>(null)
@@ -3502,7 +3503,9 @@ function OrdersSection() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Наряды на монтаж</h1>
-        <Button onClick={() => setDialogOpen(true)}><Plus className="w-4 h-4 mr-2" />Создать наряд</Button>
+        {user?.role !== 'WORKER' && (
+          <Button onClick={() => setDialogOpen(true)}><Plus className="w-4 h-4 mr-2" />Создать наряд</Button>
+        )}
       </div>
 
       <div className="grid gap-4">
@@ -3555,52 +3558,78 @@ function OrdersSection() {
                 <div className="flex flex-col gap-2 flex-shrink-0">
                   {/* Кнопки смены статуса */}
                   <div className="flex items-center gap-1">
-                    {order.status !== 'IN_PROGRESS' && order.status !== 'COMPLETED' && order.status !== 'CANCELLED' && (
-                      <Button 
-                        size="sm" 
-                        variant="outline" 
+                    {user?.role !== 'WORKER' && order.status !== 'IN_PROGRESS' && order.status !== 'PAUSED' && order.status !== 'COMPLETED' && order.status !== 'CANCELLED' && (
+                      <Button
+                        size="sm"
+                        variant="outline"
                         className="text-green-600 hover:text-green-700 hover:bg-green-50"
                         onClick={() => handleStatusChange(order.id, 'IN_PROGRESS')}
                       >
                         ▶ В работу
                       </Button>
                     )}
-                    {order.status === 'IN_PROGRESS' && (
-                      <Button 
-                        size="sm" 
-                        variant="outline" 
+                    {user?.role !== 'WORKER' && order.status === 'IN_PROGRESS' && (
+                      <Button
+                        size="sm"
+                        variant="outline"
                         className="text-orange-600 hover:text-orange-700 hover:bg-orange-50"
                         onClick={() => handleStatusChange(order.id, 'PAUSED')}
                       >
                         ⏸ Пауза
                       </Button>
                     )}
-                    {order.status === 'PAUSED' && (
-                      <Button 
-                        size="sm" 
-                        variant="outline" 
+                    {user?.role !== 'WORKER' && order.status === 'PAUSED' && (
+                      <Button
+                        size="sm"
+                        variant="outline"
                         className="text-green-600 hover:text-green-700 hover:bg-green-50"
                         onClick={() => handleStatusChange(order.id, 'IN_PROGRESS')}
                       >
                         ▶ Продолжить
                       </Button>
                     )}
-                    {(order.status === 'IN_PROGRESS' || order.status === 'PAUSED') && (
-                      <Button 
-                        size="sm" 
-                        variant="outline" 
+                    {user?.role !== 'WORKER' && (order.status === 'IN_PROGRESS' || order.status === 'PAUSED') && (
+                      <Button
+                        size="sm"
+                        variant="outline"
                         className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
                         onClick={() => handleStatusChange(order.id, 'COMPLETED')}
                       >
                         ✓ Завершить
                       </Button>
                     )}
+                    {user?.role !== 'WORKER' && order.status === 'REVIEW' && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                        onClick={() => handleStatusChange(order.id, 'COMPLETED')}
+                      >
+                        ✓ Принять работу
+                      </Button>
+                    )}
+                    {user?.role === 'WORKER' && order.status !== 'REVIEW' && order.status !== 'COMPLETED' && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                        onClick={() => handleStatusChange(order.id, 'REVIEW')}
+                      >
+                        ✓ Сдать на проверку
+                      </Button>
+                    )}
                   </div>
                   {/* Кнопки действий */}
                   <div className="flex items-center gap-1">
-                    <Button variant="ghost" size="sm" onClick={() => setViewOrder(order)} title="Просмотр"><Eye className="w-4 h-4" /></Button>
-                    <Button variant="ghost" size="sm" onClick={() => setEditOrder(order)} title="Редактировать"><Edit className="w-4 h-4" /></Button>
-                    <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700" onClick={() => handleDelete(order.id)} title="Удалить"><X className="w-4 h-4" /></Button>
+                    <Button variant="outline" size="sm" onClick={() => setViewOrder(order)}>
+                      <Eye className="w-4 h-4 mr-1" /> Просмотр
+                    </Button>
+                    {user?.role !== 'WORKER' && (
+                      <Button variant="ghost" size="sm" onClick={() => setEditOrder(order)} title="Редактировать"><Edit className="w-4 h-4" /></Button>
+                    )}
+                    {user?.role !== 'WORKER' && (
+                      <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700" onClick={() => handleDelete(order.id)} title="Удалить"><X className="w-4 h-4" /></Button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -3712,7 +3741,151 @@ function OrdersSection() {
 
               <DialogFooter>
                 <Button variant="outline" onClick={() => setViewOrder(null)}>Закрыть</Button>
-                <Button onClick={() => { const o = viewOrder; setViewOrder(null); setEditOrder(o); }}>Редактировать</Button>
+                <Button variant="outline" onClick={() => {
+                  if (!viewOrder) return
+                  const printWindow = window.open('', '_blank')
+                  if (printWindow) {
+                    const itemsHtml = (viewOrder.items || []).map((item, idx) =>
+                      `<tr>
+                        <td align="center">${idx + 1}</td>
+                        <td>${item.name}</td>
+                        <td align="center">${item.unit}</td>
+                        <td align="right">${item.quantity}</td>
+                        <td align="right">${item.unitPrice.toLocaleString('ru-RU', {minimumFractionDigits: 2})}</td>
+                        <td align="right">${(item.quantity * item.unitPrice).toLocaleString('ru-RU', {minimumFractionDigits: 2})}</td>
+                      </tr>`
+                    ).join('')
+                    const assigneesHtml = (viewOrder.assignees || []).map(a => a.employee?.fullName || '').filter(Boolean).join(', ')
+                    printWindow.document.write(`
+                      <!DOCTYPE html>
+                      <html>
+                      <head>
+                        <meta charset="UTF-8">
+                        <title>Наряд № ${viewOrder.number}</title>
+                        <style>
+                          @page { size: A4; margin: 15mm; }
+                          body { font-family: "Times New Roman", Times, serif; font-size: 11pt; line-height: 1.4; }
+                          table { border-collapse: collapse; width: 100%; margin-top: 10px; }
+                          th, td { border: 1px solid black; padding: 3mm 4mm; }
+                          th { background: #f5f5f5; text-align: center; }
+                          h2 { text-align: center; margin-bottom: 5px; }
+                          .meta { margin-bottom: 15px; }
+                          .meta p { margin: 3px 0; }
+                          .total { text-align: right; font-weight: bold; margin-top: 8px; }
+                          .footer { margin-top: 30px; display: flex; justify-content: space-between; }
+                        </style>
+                      </head>
+                      <body>
+                        <!-- Шапка формы -->
+                        <table class="no-border" style="width:100%;margin-bottom:5px;">
+                          <tr>
+                            <td class="no-border" style="width:60%;">
+                              <div style="border:1px solid black;padding:4px;min-height:40px;font-size:9pt;">
+                                Организация: ___________________________
+                              </div>
+                            </td>
+                            <td class="no-border" style="width:40%;text-align:right;font-size:8pt;vertical-align:top;">
+                              Форма № 414-АПК<br/>
+                              Утверждена Минсельхозом РФ
+                            </td>
+                          </tr>
+                        </table>
+
+                        <h2 style="font-size:14pt;margin:8px 0;">НАРЯД НА СДЕЛЬНУЮ РАБОТУ</h2>
+                        <p style="text-align:center;margin:0 0 8px 0;">№ ${viewOrder.number} от ${new Date().toLocaleDateString('ru-RU')}</p>
+
+                        <!-- Основные реквизиты -->
+                        <table class="no-border" style="width:100%;margin-bottom:8px;font-size:10pt;">
+                          <tr>
+                            <td class="no-border" style="width:50%;">Подразделение: _______________________</td>
+                            <td class="no-border" style="width:50%;">Срок выполнения: ${viewOrder.deadline ? new Date(viewOrder.deadline).toLocaleDateString('ru-RU') : '___________'}</td>
+                          </tr>
+                          <tr>
+                            <td class="no-border" colspan="2">Объект (место работы): ${viewOrder.location || '___________________________'}</td>
+                          </tr>
+                          <tr>
+                            <td class="no-border" colspan="2">Наименование работ: ${viewOrder.name}</td>
+                          </tr>
+                        </table>
+
+                        <!-- Состав бригады -->
+                        <p style="font-weight:bold;margin:8px 0 4px 0;">Состав бригады (исполнители):</p>
+                        <table style="width:100%;margin-bottom:8px;">
+                          <thead>
+                            <tr>
+                              <th style="width:5%;">№</th>
+                              <th>Ф.И.О.</th>
+                              <th style="width:20%;">Разряд</th>
+                              <th style="width:25%;">Табельный №</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            ${(viewOrder.assignees && viewOrder.assignees.length > 0)
+                              ? viewOrder.assignees.map((a, i) => `<tr>
+                                  <td align="center">${i+1}</td>
+                                  <td>${a.employee?.fullName || ''}</td>
+                                  <td align="center">—</td>
+                                  <td align="center">—</td>
+                                </tr>`).join('')
+                              : '<tr><td align="center">1</td><td>&nbsp;</td><td></td><td></td></tr><tr><td align="center">2</td><td>&nbsp;</td><td></td><td></td></tr><tr><td align="center">3</td><td>&nbsp;</td><td></td><td></td></tr>'
+                            }
+                          </tbody>
+                        </table>
+
+                        <!-- Перечень работ -->
+                        <p style="font-weight:bold;margin:8px 0 4px 0;">Перечень работ:</p>
+                        ${(viewOrder.items && viewOrder.items.length > 0) ? `
+                        <table style="width:100%;margin-bottom:8px;">
+                          <thead>
+                            <tr>
+                              <th style="width:5%;">№</th>
+                              <th>Наименование работ</th>
+                              <th style="width:8%;">Ед. изм.</th>
+                              <th style="width:10%;">Норма выработки</th>
+                              <th style="width:10%;">Объём работ</th>
+                              <th style="width:12%;">Расценка, руб.</th>
+                              <th style="width:12%;">Сумма, руб.</th>
+                            </tr>
+                          </thead>
+                          <tbody>${itemsHtml}</tbody>
+                          <tfoot>
+                            <tr>
+                              <td colspan="6" align="right"><b>Итого:</b></td>
+                              <td align="right"><b>${viewOrder.items.reduce((s, i) => s + i.quantity * i.unitPrice, 0).toLocaleString('ru-RU', {minimumFractionDigits: 2})}</b></td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                        ` : `<table style="width:100%;margin-bottom:8px;">
+                          <thead><tr><th>№</th><th>Наименование работ</th><th>Ед. изм.</th><th>Норма выработки</th><th>Объём работ</th><th>Расценка, руб.</th><th>Сумма, руб.</th></tr></thead>
+                          <tbody><tr><td>&nbsp;</td><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td>&nbsp;</td><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td></tr></tbody>
+                        </table>`}
+
+                        ${viewOrder.notes ? `<p><b>Примечания:</b> ${viewOrder.notes}</p>` : ''}
+
+                        <!-- Подписи -->
+                        <table class="no-border" style="width:100%;margin-top:20px;">
+                          <tr>
+                            <td class="no-border" style="width:50%;">Наряд выдал: _______________________<br/><span style="font-size:8pt;">(подпись, расшифровка)</span></td>
+                            <td class="no-border" style="width:50%;">Бригадир: _______________________<br/><span style="font-size:8pt;">(подпись, расшифровка)</span></td>
+                          </tr>
+                          <tr style="margin-top:15px;">
+                            <td class="no-border" style="padding-top:15px;">Работу принял: _______________________<br/><span style="font-size:8pt;">(подпись, расшифровка)</span></td>
+                            <td class="no-border" style="padding-top:15px;">Дата сдачи: _______________________</td>
+                          </tr>
+                        </table>
+                      </body>
+                      </html>
+                    `)
+                    printWindow.document.close()
+                    printWindow.focus()
+                    printWindow.print()
+                  }
+                }}>
+                  🖨️ Печать
+                </Button>
+                {user?.role !== 'WORKER' && (
+                  <Button onClick={() => { const o = viewOrder; setViewOrder(null); setEditOrder(o); }}>Редактировать</Button>
+                )}
               </DialogFooter>
             </div>
           )}
@@ -4027,12 +4200,76 @@ function SettingsSection() {
   const user = useAppStore((s) => s.user)
   const [backingUp, setBackingUp] = useState(false)
   const [reloading, setReloading] = useState(false)
-  const [loading, setLoading] = useState(false)
   const [dbStats, setDbStats] = useState<{ counts: Record<string, number>; total: number } | null>(null)
+  const [profileName, setProfileName] = useState(user?.name || '')
+  const [profileEmail, setProfileEmail] = useState(user?.email || '')
+  const [oldPassword, setOldPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [users, setUsers] = useState<{id:string;name:string;email:string;role:string;isActive:boolean}[]>([])
+  const [showAddUser, setShowAddUser] = useState(false)
+  const [newUserName, setNewUserName] = useState('')
+  const [newUserEmail, setNewUserEmail] = useState('')
+  const [newUserPassword, setNewUserPassword] = useState('')
+  const [newUserRole, setNewUserRole] = useState('WORKER')
 
   useEffect(() => {
     fetch('/api/settings/database').then(r => r.json()).then(setDbStats).catch(console.error)
+    fetch('/api/users').then(r => r.json()).then(setUsers).catch(console.error)
   }, [])
+
+  const handleSaveProfile = async () => {
+    try {
+      const res = await fetch('/api/users/profile', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: profileName, email: profileEmail })
+      })
+      if (res.ok) toast.success('Профиль сохранён')
+      else toast.error('Ошибка сохранения')
+    } catch { toast.error('Ошибка сохранения') }
+  }
+
+  const handleChangePassword = async () => {
+    if (newPassword !== confirmPassword) { toast.error('Пароли не совпадают'); return }
+    if (newPassword.length < 6) { toast.error('Пароль минимум 6 символов'); return }
+    try {
+      const res = await fetch('/api/users/password', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ oldPassword, newPassword })
+      })
+      if (res.ok) { toast.success('Пароль изменён'); setOldPassword(''); setNewPassword(''); setConfirmPassword('') }
+      else toast.error('Неверный текущий пароль')
+    } catch { toast.error('Ошибка') }
+  }
+
+  const handleAddUser = async () => {
+    if (!newUserName || !newUserEmail || !newUserPassword) { toast.error('Заполните все поля'); return }
+    try {
+      const res = await fetch('/api/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newUserName, email: newUserEmail, password: newUserPassword, role: newUserRole })
+      })
+      if (res.ok) {
+        toast.success('Пользователь добавлен')
+        setShowAddUser(false); setNewUserName(''); setNewUserEmail(''); setNewUserPassword('')
+        fetch('/api/users').then(r => r.json()).then(setUsers)
+      } else toast.error('Ошибка создания пользователя')
+    } catch { toast.error('Ошибка') }
+  }
+
+  const handleToggleUser = async (id: string, isActive: boolean) => {
+    try {
+      await fetch(`/api/users/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isActive: !isActive })
+      })
+      fetch('/api/users').then(r => r.json()).then(setUsers)
+    } catch { toast.error('Ошибка') }
+  }
 
   const handleBackup = async () => {
     setBackingUp(true)
@@ -4047,177 +4284,140 @@ function SettingsSection() {
         a.click()
         URL.revokeObjectURL(url)
         toast.success('Бэкап создан')
-      } else {
-        toast.error('Ошибка создания бэкапа')
-      }
-    } catch (error) {
-      toast.error('Ошибка создания бэкапа')
-    }
+      } else toast.error('Ошибка создания бэкапа')
+    } catch { toast.error('Ошибка создания бэкапа') }
     setBackingUp(false)
   }
 
   const handleReload = async () => {
-    if (!confirm('Перезагрузить приложение? Все несохранённые данные будут потеряны.')) return
+    if (!confirm('Перезагрузить приложение?')) return
     setReloading(true)
     try {
       await fetch('/api/settings/reload', { method: 'POST' })
       toast.success('Приложение перезагружается...')
       setTimeout(() => window.location.reload(), 1000)
-    } catch (error) {
-      toast.error('Ошибка перезагрузки')
-      setReloading(false)
-    }
+    } catch { toast.error('Ошибка перезагрузки'); setReloading(false) }
   }
 
-  const handleClearDb = async () => {
-    if (!confirm('Очистить базу данных? Все данные будут удалены!')) return
-    if (!confirm('Вы уверены? Это действие нельзя отменить!')) return
-    setLoading(true)
-    try {
-      const res = await fetch('/api/settings/database', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'clear' })
-      })
-      if (res.ok) {
-        toast.success('База данных очищена')
-        const stats = await fetch('/api/settings/database').then(r => r.json())
-        setDbStats(stats)
-      } else {
-        toast.error('Ошибка очистки')
-      }
-    } catch (error) {
-      toast.error('Ошибка очистки')
-    }
-    setLoading(false)
-  }
-
-  const handleLoadDemo = async () => {
-    if (!confirm('Загрузить демо-данные? Текущие данные будут заменены!')) return
-    setLoading(true)
-    try {
-      const res = await fetch('/api/settings/database', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'demo' })
-      })
-      if (res.ok) {
-        toast.success('Демо-данные загружены')
-        const stats = await fetch('/api/settings/database').then(r => r.json())
-        setDbStats(stats)
-      } else {
-        toast.error('Ошибка загрузки демо-данных')
-      }
-    } catch (error) {
-      toast.error('Ошибка загрузки демо-данных')
-    }
-    setLoading(false)
-  }
+  const roleLabels: Record<string,string> = { ADMIN: 'Администратор', MANAGER: 'Менеджер', FOREMAN: 'Бригадир', WORKER: 'Монтажник', ACCOUNTANT: 'Бухгалтер' }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 space-y-4 max-w-2xl mx-auto">
       <h1 className="text-2xl font-bold">Настройки</h1>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader><CardTitle>Профиль пользователя</CardTitle></CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center gap-4">
-              <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center">
-                <span className="text-blue-700 font-bold text-xl">{user?.name?.split(' ').map(n => n[0]).join('').slice(0, 2)}</span>
-              </div>
-              <div>
-                <p className="font-medium text-lg">{user?.name}</p>
-                <p className="text-gray-500">{user?.email}</p>
-                <Badge className="mt-1">{user?.role}</Badge>
-              </div>
+      <Card>
+        <CardHeader><CardTitle className="text-base">👤 Профиль</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex items-center gap-3">
+            <div className="w-14 h-14 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
+              <span className="text-blue-700 font-bold text-lg">{user?.name?.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}</span>
             </div>
-            <div className="grid gap-4">
-              <div><Label>Имя</Label><Input defaultValue={user?.name} /></div>
-              <div><Label>Email</Label><Input defaultValue={user?.email} /></div>
+            <div>
+              <p className="font-semibold">{user?.name}</p>
+              <p className="text-sm text-gray-500">{user?.email}</p>
+              <Badge className="mt-1 text-xs">{roleLabels[user?.role || ''] || user?.role}</Badge>
             </div>
-            <Button className="w-full">Сохранить</Button>
-          </CardContent>
-        </Card>
+          </div>
+          <div><Label className="text-sm">Имя</Label><Input value={profileName} onChange={e => setProfileName(e.target.value)} className="mt-1" /></div>
+          <div><Label className="text-sm">Email</Label><Input value={profileEmail} onChange={e => setProfileEmail(e.target.value)} className="mt-1" /></div>
+          <Button className="w-full" onClick={handleSaveProfile}>Сохранить профиль</Button>
+        </CardContent>
+      </Card>
 
+      <Card>
+        <CardHeader><CardTitle className="text-base">🔐 Смена пароля</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          <div><Label className="text-sm">Текущий пароль</Label><Input type="password" value={oldPassword} onChange={e => setOldPassword(e.target.value)} className="mt-1" /></div>
+          <div><Label className="text-sm">Новый пароль</Label><Input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} className="mt-1" /></div>
+          <div><Label className="text-sm">Подтвердите пароль</Label><Input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} className="mt-1" /></div>
+          <Button className="w-full" variant="outline" onClick={handleChangePassword}>Изменить пароль</Button>
+        </CardContent>
+      </Card>
+
+      {user?.role === 'ADMIN' && (
         <Card>
-          <CardHeader><CardTitle>База данных</CardTitle></CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-              <div><p className="font-medium">Тип БД</p><p className="text-sm text-gray-500">SQLite</p></div>
-              <Badge className="bg-green-100 text-green-800">Подключена</Badge>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base">👥 Пользователи</CardTitle>
+              <Button size="sm" onClick={() => setShowAddUser(!showAddUser)}>+ Добавить</Button>
             </div>
-            
-            {dbStats && (
-              <div className="p-4 bg-blue-50 rounded-lg">
-                <p className="font-medium mb-2">Статистика данных</p>
-                <div className="grid grid-cols-3 gap-2 text-sm">
-                  <div className="text-center p-2 bg-white rounded">
-                    <p className="text-lg font-bold">{dbStats.counts.directions}</p>
-                    <p className="text-gray-500">Направлений</p>
-                  </div>
-                  <div className="text-center p-2 bg-white rounded">
-                    <p className="text-lg font-bold">{dbStats.counts.buildings}</p>
-                    <p className="text-gray-500">Объектов</p>
-                  </div>
-                  <div className="text-center p-2 bg-white rounded">
-                    <p className="text-lg font-bold">{dbStats.counts.plans}</p>
-                    <p className="text-gray-500">Планов</p>
-                  </div>
-                  <div className="text-center p-2 bg-white rounded">
-                    <p className="text-lg font-bold">{dbStats.counts.employees}</p>
-                    <p className="text-gray-500">Сотрудников</p>
-                  </div>
-                  <div className="text-center p-2 bg-white rounded">
-                    <p className="text-lg font-bold">{dbStats.counts.orders}</p>
-                    <p className="text-gray-500">Нарядов</p>
-                  </div>
-                  <div className="text-center p-2 bg-white rounded">
-                    <p className="text-lg font-bold">{dbStats.total}</p>
-                    <p className="text-gray-500">Всего</p>
-                  </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {showAddUser && (
+              <div className="p-3 bg-blue-50 rounded-lg space-y-2">
+                <div><Label className="text-sm">Имя</Label><Input value={newUserName} onChange={e => setNewUserName(e.target.value)} className="mt-1" /></div>
+                <div><Label className="text-sm">Email</Label><Input value={newUserEmail} onChange={e => setNewUserEmail(e.target.value)} className="mt-1" /></div>
+                <div><Label className="text-sm">Пароль</Label><Input type="password" value={newUserPassword} onChange={e => setNewUserPassword(e.target.value)} className="mt-1" /></div>
+                <div>
+                  <Label className="text-sm">Роль</Label>
+                  <select value={newUserRole} onChange={e => setNewUserRole(e.target.value)} className="mt-1 w-full border rounded-md p-2 text-sm">
+                    <option value="WORKER">Монтажник</option>
+                    <option value="FOREMAN">Бригадир</option>
+                    <option value="ADMIN">Администратор</option>
+                    <option value="MANAGER">Менеджер</option>
+                    <option value="ACCOUNTANT">Бухгалтер</option>
+                  </select>
+                </div>
+                <div className="flex gap-2">
+                  <Button className="flex-1" onClick={handleAddUser}>Создать</Button>
+                  <Button className="flex-1" variant="outline" onClick={() => setShowAddUser(false)}>Отмена</Button>
                 </div>
               </div>
             )}
-            
             <div className="space-y-2">
-              <div className="grid grid-cols-2 gap-2">
-                <Button variant="outline" onClick={handleLoadDemo} disabled={loading}>
-                  <Database className="w-4 h-4 mr-2" />
-                  Загрузить демо
-                </Button>
-                <Button variant="outline" className="text-red-600 hover:text-red-700" onClick={handleClearDb} disabled={loading}>
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  Очистить базу
-                </Button>
-              </div>
-              <Button variant="outline" className="w-full" onClick={handleBackup} disabled={backingUp}>
-                <Download className="w-4 h-4 mr-2" />
-                {backingUp ? 'Создание бэкапа...' : 'Скачать бэкап базы'}
-              </Button>
+              {users.map(u => (
+                <div key={u.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                  <div>
+                    <p className="font-medium text-sm">{u.name}</p>
+                    <p className="text-xs text-gray-500">{u.email} · {roleLabels[u.role] || u.role}</p>
+                  </div>
+                  <Button size="sm" variant={u.isActive ? "outline" : "default"} onClick={() => handleToggleUser(u.id, u.isActive)}>
+                    {u.isActive ? 'Откл.' : 'Вкл.'}
+                  </Button>
+                </div>
+              ))}
             </div>
           </CardContent>
         </Card>
+      )}
 
-        <Card>
-          <CardHeader><CardTitle>Система</CardTitle></CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-              <div><p className="font-medium">Версия</p><p className="text-sm text-gray-500">1.0.0</p></div>
+      <Card>
+        <CardHeader><CardTitle className="text-base">🗄️ База данных</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+            <p className="text-sm font-medium">SQLite</p>
+            <Badge className="bg-green-100 text-green-800 text-xs">Подключена</Badge>
+          </div>
+          {dbStats && (
+            <div className="grid grid-cols-3 gap-2 text-sm">
+              <div className="text-center p-2 bg-gray-50 rounded"><p className="font-bold">{dbStats.counts.directions}</p><p className="text-xs text-gray-500">Направлений</p></div>
+              <div className="text-center p-2 bg-gray-50 rounded"><p className="font-bold">{dbStats.counts.buildings}</p><p className="text-xs text-gray-500">Объектов</p></div>
+              <div className="text-center p-2 bg-gray-50 rounded"><p className="font-bold">{dbStats.counts.plans}</p><p className="text-xs text-gray-500">Планов</p></div>
+              <div className="text-center p-2 bg-gray-50 rounded"><p className="font-bold">{dbStats.counts.employees}</p><p className="text-xs text-gray-500">Сотрудников</p></div>
+              <div className="text-center p-2 bg-gray-50 rounded"><p className="font-bold">{dbStats.counts.orders}</p><p className="text-xs text-gray-500">Нарядов</p></div>
+              <div className="text-center p-2 bg-gray-50 rounded"><p className="font-bold">{dbStats.total}</p><p className="text-xs text-gray-500">Всего</p></div>
             </div>
-            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-              <div><p className="font-medium">PWA</p><p className="text-sm text-gray-500">Мобильное приложение</p></div>
-              <Badge className="bg-blue-100 text-blue-800">Активно</Badge>
-            </div>
-            <div className="pt-4">
-              <Button variant="outline" className="w-full text-orange-600 hover:text-orange-700" onClick={handleReload} disabled={reloading}>
-                <Settings className="w-4 h-4 mr-2" />
-                {reloading ? 'Перезагрузка...' : 'Перезагрузить приложение'}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+          )}
+          <Button variant="outline" className="w-full" onClick={handleBackup} disabled={backingUp}>
+            <Download className="w-4 h-4 mr-2" />
+            {backingUp ? 'Создание бэкапа...' : 'Скачать бэкап базы'}
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle className="text-base">⚙️ Система</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+            <p className="text-sm font-medium">Версия</p>
+            <span className="text-sm text-gray-500">1.0.0</span>
+          </div>
+          <Button variant="outline" className="w-full text-orange-600 hover:text-orange-700" onClick={handleReload} disabled={reloading}>
+            <Settings className="w-4 h-4 mr-2" />
+            {reloading ? 'Перезагрузка...' : 'Перезагрузить приложение'}
+          </Button>
+        </CardContent>
+      </Card>
     </div>
   )
 }
@@ -4226,6 +4426,25 @@ function SettingsSection() {
 export default function Home() {
   const { user, setUser, currentSection, setDashboard, setOrders, setSalaryPayments } = useAppStore()
   const [checking, setChecking] = useState(true)
+
+  // Проверка активности сессии каждые 30 секунд
+  useEffect(() => {
+    if (!user) return
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch('/api/auth/check', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: user.id })
+        })
+        if (!res.ok) {
+          localStorage.removeItem('user')
+          setUser(null)
+        }
+      } catch {}
+    }, 30000)
+    return () => clearInterval(interval)
+  }, [user, setUser])
 
   useEffect(() => {
     const savedUser = localStorage.getItem('user')
